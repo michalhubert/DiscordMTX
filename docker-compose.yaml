@@ -7,15 +7,15 @@ services:
     user: "1200:1200" # Change to any user that has access to volume files or remove to run as root
 
     environment:
-      DISCORD_WEBHOOK_URL: your_discord_webhook
-      PLAYER_DOMAIN: player_domain
-      STREAMER_PASSWORD: your_streamer_password
-      WEBRTC_TRUSTED_PROXIES: proxies_list
-      WEBRTC_ADDITIONAL_HOSTS: addresses_and_or_domains_list
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+      PLAYER_DOMAIN: ${PLAYER_DOMAIN:-}
+      STREAMER_PASSWORD: ${STREAMER_PASSWORD:-}
+      WEBRTC_TRUSTED_PROXIES: ${WEBRTC_TRUSTED_PROXIES:-0.0.0.0}
+      WEBRTC_ADDITIONAL_HOSTS: ${WEBRTC_ADDITIONAL_HOSTS:-0.0.0.0,rtc.domain.com}
       # you can overwrite built in script using these env variables and proper volume containing new scripts
-      HOOK_ONLINE: path_to_online_script
-      HOOK_ONLINE_RESTART: run_on_online_restart
-      HOOK_OFFLINE: path_to_offline_script
+      HOOK_ONLINE: ${HOOK_ONLINE:-/hooks/stream-online.sh}
+      HOOK_ONLINE_RESTART: ${HOOK_ONLINE_RESTART:-false}
+      HOOK_OFFLINE: ${HOOK_OFFLINE:-/hooks/stream-offline.sh}
 
     volumes:
       - ./hooks:/opt/hooks:ro # custom hooks if needed
@@ -37,7 +37,7 @@ services:
       - ./auth:/auth:ro
 
     ports:
-      - "8080:80"
+      - "${NGINX_PORT:-8080}:80"
 
     depends_on:
       - mediamtx
