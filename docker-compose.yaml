@@ -1,7 +1,7 @@
 services:
-  mediamtx:
+  discordmtx:
     image: mikko99/discordmtx:latest
-    container_name: mediamtx
+    container_name: discordmtx
     restart: unless-stopped
 
     user: "1200:1200" # Change to any user that has access to volume files or remove to run as root
@@ -30,7 +30,7 @@ services:
 
   nginx:
     image: mikko99/discordmtx-nginx:latest
-    container_name: mediamtx-nginx
+    container_name: discordmtx-nginx
     restart: unless-stopped
 
     volumes:
@@ -40,7 +40,7 @@ services:
       - "${NGINX_PORT:-8080}:80"
 
     depends_on:
-      - mediamtx
+      - discordmtx
 
     networks:
       - stream
