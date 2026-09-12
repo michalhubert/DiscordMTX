@@ -1,7 +1,5 @@
 FROM bluenviron/mediamtx:1
 
-USER root
-
 RUN apk add --no-cache \
     curl \
     openssl \
