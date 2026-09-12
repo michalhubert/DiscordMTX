@@ -5,7 +5,9 @@
 
 Made for personal streaming with whatever quality and framerate you want - no need to pay for Nitro just to get readable text and bearable stream quality.
 
-A small Docker Compose setup built around [MediaMTX](https://github.com/bluenviron/mediamtx), with WebRTC playback, NGINX authentication, and Discord webhook hooks.
+A small Docker Compose setup built around MediaMTX for direct, no-transcode WebRTC streaming. Bitrate, resolution, and framerate are fully controlled by the streaming application (e.g. OBS), with NGINX viewer authentication and Discord webhook hooks.
+
+FFmpeg transcoding may be added in the future.
 
 ## Features
 
