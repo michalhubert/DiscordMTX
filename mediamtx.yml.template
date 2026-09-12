@@ -1,0 +1,51 @@
+authMethod: internal
+
+authInternalUsers:
+  # Owner
+  - user: streamer
+    pass: ${STREAMER_PASSWORD}
+    permissions:
+      - action: publish
+        path: desktop
+
+  # Frens only when not using nginx
+#  - user: viewer
+#    pass:
+#    permissions:
+#      - action: read
+#        path: desktop
+
+  # Frens through magic of nginx
+  - user: any
+    pass:
+    permissions:
+      - action: read
+        path: desktop
+
+  # API local only
+  - user: any
+    pass:
+    ips:
+      - 127.0.0.1
+      - ::1
+    permissions:
+      - action: api
+      - action: metrics
+      - action: pprof
+
+webrtc: true
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8189
+
+webrtcIPsFromInterfaces: true
+webrtcTrustedProxies:
+${WEBRTC_TRUSTED_PROXIES}
+
+webrtcAdditionalHosts:
+${WEBRTC_ADDITIONAL_HOSTS}
+
+paths:
+  desktop:
+    runOnOnline: ${HOOK_ONLINE}
+    runOnOnlineRestart: ${HOOK_ONLINE_RESTART}
+    runOnOffline: ${HOOK_OFFLINE}

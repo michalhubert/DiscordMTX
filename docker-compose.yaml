@@ -1,0 +1,58 @@
+services:
+  mediamtx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    image: discordmtx:latest
+    container_name: mediamtx
+    restart: unless-stopped
+
+    user: "1200:1200" # Change to any user that has access to volume files or remove to run as root
+
+    environment:
+      DISCORD_WEBHOOK_URL: your_discord_webhook
+      PLAYER_DOMAIN: player_domain
+      STREAMER_PASSWORD: your_streamer_password
+      WEBRTC_TRUSTED_PROXIES: proxies_list
+      WEBRTC_ADDITIONAL_HOSTS: addresses_and_or_domains_list
+      # you can overwrite built in script using these env variables and proper volume containing new scripts
+      HOOK_ONLINE: path_to_online_script
+      HOOK_ONLINE_RESTART: run_on_online_restart
+      HOOK_OFFLINE: path_to_offline_script
+
+    volumes:
+      - ./hooks:/opt/hooks:ro # custom hooks if needed
+      - ./auth:/auth # place to store .htpasswd, MUST BE THE SAME LOCATION FOR NGINX
+
+    ports:
+      - "8889:8889/tcp"
+      - "8189:8189/udp"
+
+    networks:
+      - stream
+
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx.Dockerfile
+
+    image: discordmtx-nginx:alpine
+    container_name: mediamtx-nginx
+    restart: unless-stopped
+
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./auth:/auth:ro
+
+    ports:
+      - "8080:80"
+
+    depends_on:
+      - mediamtx
+
+    networks:
+      - stream
+
+networks:
+  stream:
