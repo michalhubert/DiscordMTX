@@ -1,10 +1,6 @@
 services:
   mediamtx:
-    build:
-      context: .
-      dockerfile: Dockerfile
-
-    image: discordmtx:latest
+    image: mikko99/discordmtx:latest
     container_name: mediamtx
     restart: unless-stopped
 
@@ -26,23 +22,18 @@ services:
       - ./auth:/auth # place to store .htpasswd, MUST BE THE SAME LOCATION FOR NGINX
 
     ports:
-      - "8889:8889/tcp"
-      - "8189:8189/udp"
+      - "8889:8889/tcp" # TCP comm, like WHIP or web player
+      - "8189:8189/udp" # av stream goes through UDP
 
     networks:
       - stream
 
   nginx:
-    build:
-      context: .
-      dockerfile: nginx.Dockerfile
-
-    image: discordmtx-nginx:alpine
+    image: mikko99/discordmtx-nginx:latest
     container_name: mediamtx-nginx
     restart: unless-stopped
 
     volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./auth:/auth:ro
 
     ports:
