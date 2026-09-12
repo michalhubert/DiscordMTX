@@ -3,6 +3,8 @@
 [![Docker](https://img.shields.io/badge/Docker-required-blue?logo=docker)](https://www.docker.com/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
+Made for personal streaming with whatever quality and framerate you want - no need to pay for Nitro just to get readable text and bearable stream quality.
+
 A small Docker Compose setup built around [MediaMTX](https://github.com/bluenviron/mediamtx), with WebRTC playback, NGINX authentication, and Discord webhook hooks.
 
 ## Features
@@ -172,3 +174,7 @@ Keep in mind that HTTPS proxying and WebRTC are separate connections. Cloudflare
 ## License
 
 [MIT](LICENSE)
+
+## Note
+
+Some parts of this project were written with help from AI tools, but this was not agentically generated or fully vibe-coded.
