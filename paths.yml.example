@@ -1,0 +1,13 @@
+# Dynamic paths configuration for DiscordMTX
+# Copy this file to paths.yml and configure your paths
+
+paths:
+  - name: desktop
+    # Optional: Custom hook scripts (overrides global hooks)
+    # hook_online: /hooks/stream-online.sh
+    # hook_offline: /hooks/stream-offline.sh
+    # hook_online_restart: false
+
+  - name: gaming
+
+  - name: music

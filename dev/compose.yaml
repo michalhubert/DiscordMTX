@@ -1,6 +1,8 @@
 services:
   discordmtx:
-    image: mikko99/discordmtx:latest
+    build:
+      context: ..
+      dockerfile: Dockerfile
     container_name: discordmtx
     restart: unless-stopped
 
@@ -20,9 +22,9 @@ services:
       HOOK_OFFLINE: ${HOOK_OFFLINE:-/hooks/stream-offline.sh}
 
     volumes:
-      - ./hooks:/opt/hooks:ro # custom hooks if needed
-      - ./auth:/auth # place to store .htpasswd, MUST BE THE SAME LOCATION FOR NGINX
-      - ./paths.yml:/opt/streams/paths.yml:ro # path configuration
+      - ../hooks:/opt/hooks:ro # custom hooks if needed
+      - ../auth:/auth # place to store .htpasswd, MUST BE THE SAME LOCATION FOR NGINX
+      - ../paths.yml:/opt/streams/paths.yml:ro # path configuration
 
     ports:
       - "8889:8889/tcp" # TCP comm, like WHIP or web player
@@ -32,12 +34,14 @@ services:
       - stream
 
   nginx:
-    image: mikko99/discordmtx-nginx:latest
+    build:
+      context: ..
+      dockerfile: nginx.Dockerfile
     container_name: discordmtx-nginx
     restart: unless-stopped
 
     volumes:
-      - ./auth:/auth:ro
+      - ../auth:/auth:ro
 
     ports:
       - "${NGINX_PORT:-8080}:80"

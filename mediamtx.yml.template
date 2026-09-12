@@ -5,8 +5,7 @@ authInternalUsers:
   - user: streamer
     pass: ${STREAMER_PASSWORD}
     permissions:
-      - action: publish
-        path: desktop
+${PUBLISH_PERMISSIONS}
 
   # Frens only when not using nginx
 #  - user: viewer
@@ -19,8 +18,7 @@ authInternalUsers:
   - user: any
     pass:
     permissions:
-      - action: read
-        path: desktop
+${READ_PERMISSIONS}
 
   # API local only
   - user: any
@@ -38,14 +36,9 @@ webrtcAddress: :8889
 webrtcLocalUDPAddress: :8189
 
 webrtcIPsFromInterfaces: true
-webrtcTrustedProxies:
-${WEBRTC_TRUSTED_PROXIES}
+webrtcTrustedProxies: ${WEBRTC_TRUSTED_PROXIES}
 
-webrtcAdditionalHosts:
-${WEBRTC_ADDITIONAL_HOSTS}
+webrtcAdditionalHosts: ${WEBRTC_ADDITIONAL_HOSTS}
 
 paths:
-  desktop:
-    runOnOnline: ${HOOK_ONLINE}
-    runOnOnlineRestart: ${HOOK_ONLINE_RESTART}
-    runOnOffline: ${HOOK_OFFLINE}
+${PATHS}
