@@ -46,6 +46,7 @@ WEBRTC_TRUSTED_PROXIES=0.0.0.0
 WEBRTC_ADDITIONAL_HOSTS=192.168.1.100,203.0.113.10
 
 NGINX_PORT=8080
+STREAM_UPSTREAM_HOST=discordmtx
 ```
 
 Start the stack:
@@ -79,6 +80,7 @@ docker compose down
 | `WEBRTC_TRUSTED_PROXIES`  | Proxies trusted by MediaMTX for WebRTC             |
 | `WEBRTC_ADDITIONAL_HOSTS` | Addresses advertised to the WebRTC player          |
 | `NGINX_PORT`              | Host port exposed by NGINX                         |
+| `STREAM_UPSTREAM_HOST`    | Hostname/IP of the discordmtx service NGINX proxies to |
 
 ### `DISCORD_WEBHOOK_URLS`
 
@@ -123,6 +125,8 @@ The web interface/player itself can still be served through the normal Cloudflar
 | `8080` |    TCP   | NGINX         |
 
 The NGINX port can be changed with `NGINX_PORT`.
+
+NGINX proxies to the `discordmtx` container on port `8889` over plain HTTP. The upstream hostname/IP can be changed with `STREAM_UPSTREAM_HOST` (defaults to `discordmtx`); the port and protocol are fixed.
 
 ## MediaMTX
 
@@ -224,7 +228,8 @@ Keep in mind that HTTPS proxying and WebRTC are separate connections. Cloudflare
 ├── entrypoint.sh
 ├── mediamtx.yml.template
 ├── nginx.Dockerfile
-├── nginx.conf
+├── nginx.conf.template
+├── nginx-entrypoint.sh
 ├── paths.yml
 └── paths.yml.example
 ```

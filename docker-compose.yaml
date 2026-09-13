@@ -36,6 +36,10 @@ services:
     container_name: discordmtx-nginx
     restart: unless-stopped
 
+    environment:
+      # Hostname or IP of the discordmtx container/service NGINX proxies to (port and protocol stay fixed)
+      STREAM_UPSTREAM_HOST: ${STREAM_UPSTREAM_HOST:-discordmtx}
+
     volumes:
       - ./auth:/auth:ro
 
