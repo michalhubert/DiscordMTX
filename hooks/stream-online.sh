@@ -47,9 +47,16 @@ if [ -z "$WEBHOOK_URL" ]; then
     echo "========================================="
 else
     echo "Stream is online. Firing Discord webhook..."
-    curl -fsS \
+    if ! RESPONSE="$(curl -fsS \
       -H 'Content-Type: application/json' \
       -X POST \
       --data "{\"content\":\" :red_circle: **STREAM ONLINE**\\nStream: ${STREAM_PATH}\\n${URL}\"}" \
-      "$WEBHOOK_URL"
+      "$WEBHOOK_URL" 2>&1)"; then
+        echo "ERROR: Discord webhook failed: $RESPONSE" >&2
+        echo "========================================="
+        echo "STREAM ONLINE! (Discord webhook failed, falling back to console)"
+        echo "Stream: $STREAM_PATH"
+        echo "Viewer URL: $URL"
+        echo "========================================="
+    fi
 fi
