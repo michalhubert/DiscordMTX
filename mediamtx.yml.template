@@ -35,7 +35,7 @@ webrtc: true
 webrtcAddress: :8889
 webrtcLocalUDPAddress: :8189
 
-webrtcIPsFromInterfaces: true
+webrtcIPsFromInterfaces: false
 webrtcTrustedProxies: ${WEBRTC_TRUSTED_PROXIES}
 
 webrtcAdditionalHosts: ${WEBRTC_ADDITIONAL_HOSTS}
