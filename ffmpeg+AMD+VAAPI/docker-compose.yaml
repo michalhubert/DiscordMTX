@@ -30,7 +30,6 @@ services:
       HOOK_OFFLINE: path_to_offline_script
 
     volumes:
-      - ./mediamtx.yml.template:/mediamtx.yml.template:ro
       - ./hooks:/opt/hooks:ro # custom hooks
       - ./auth:/auth
 

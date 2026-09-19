@@ -5,13 +5,11 @@ FROM alpine:latest
 RUN apk add --no-cache \
     curl \
     openssl \
-    gettext \
     yq
 
 COPY --from=mediamtx /mediamtx /mediamtx
-COPY --from=mediamtx /mediamtx.yml /mediamtx.yml
 
-COPY mediamtx.yml.template /mediamtx.yml.template
+COPY mediamtx.yml /mediamtx.yml
 
 COPY paths.yml /opt/streams/paths.yml
 # Built-in fallback
