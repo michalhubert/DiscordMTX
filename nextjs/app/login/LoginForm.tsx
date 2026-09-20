@@ -2,18 +2,17 @@
 
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
-import { useState, SyntheticEvent } from "react";
+import { FormEvent, useState } from "react";
 
 export default function LoginForm({ discordEnabled }: { discordEnabled: boolean }) {
   const searchParams = useSearchParams();
   const isStreamerMode = searchParams.get("mode") === "streamer";
   const callbackUrl = searchParams.get("callbackUrl") ?? (isStreamerMode ? "/dock" : "/");
-  const originUrl = searchParams.get("originUrl");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: SyntheticEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
@@ -25,7 +24,7 @@ export default function LoginForm({ discordEnabled }: { discordEnabled: boolean 
     if (res?.error) {
       setError("Invalid password. Try again.");
     } else {
-      window.location.href = originUrl ? `${originUrl}${callbackUrl}` : callbackUrl;
+      window.location.href = callbackUrl;
     }
   }
 
@@ -41,7 +40,7 @@ export default function LoginForm({ discordEnabled }: { discordEnabled: boolean 
 
         {!isStreamerMode && discordEnabled && (
           <button
-            onClick={() => signIn("discord", { callbackUrl: originUrl ? `${originUrl}${callbackUrl}` : callbackUrl })}
+            onClick={() => signIn("discord", { callbackUrl })}
             className="w-full flex items-center justify-center gap-2 bg-[#5865F2] hover:bg-[#4752C4] text-white font-medium rounded-lg py-2.5 text-sm transition-colors mb-4"
           >
             Sign in with Discord
