@@ -17,6 +17,7 @@ FFmpeg transcoding may be added in the future.
 * Optional OAuth/OIDC (Authentik, Authelia, Keycloak, etc.) for homelab users
 * Per-stream viewer password for external/non-Docker viewers
 * Discord webhooks on stream online/offline events
+* Private streamer HUD / OBS Custom Browser Dock
 * Automatic credential generation
 * Docker Compose deployment
 
@@ -214,6 +215,23 @@ MediaMTX runs the online hook when the stream starts and the offline hook when i
 `stream-online.sh` generates a random per-stream viewer password and writes it to `/auth/viewer-token` (a volume shared with the Next.js container), which the Next.js login page validates against. `stream-offline.sh` deletes it again, immediately invalidating the password once the stream ends. The player URL posted to Discord never contains credentials — viewers enter the password on the Next.js login page.
 
 The hook scripts resolve the Discord webhook to use for the current path from the `DISCORD_WEBHOOK_URLS`/`DISCORD_WEBHOOK_URL` environment variables, which they inherit directly from the container.
+
+## Streamer HUD / OBS Custom Browser Dock
+
+A private streamer dashboard is available under `/streamer/dock` (protected by Basic Auth using username `streamer` and your `STREAMER_PASSWORD`).
+
+Features:
+* Real-time viewer count and stream status (Live / Offline)
+* Connected viewer IP addresses, stream paths, session durations, and transferred data
+* Live activity log showing recent viewer connections and disconnections
+* Optional audio chime synthesized via Web Audio API on viewer join
+
+### Adding to OBS Studio
+1. In OBS Studio, open **Docks** > **Custom Browser Docks...**
+2. Set **Dock Name** to `Stream HUD` (or any name you prefer).
+3. Set **URL** to `https://stream.example.com/streamer/dock` (or `http://localhost:8080/streamer/dock`).
+4. Enter `streamer` and your `STREAMER_PASSWORD` when prompted for credentials.
+5. Dock the window anywhere in your OBS workspace.
 
 ## Development
 

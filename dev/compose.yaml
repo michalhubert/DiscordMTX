@@ -14,7 +14,8 @@ services:
       DISCORD_WEBHOOK_URLS: ${DISCORD_WEBHOOK_URLS:-}
       PLAYER_DOMAIN: ${PLAYER_DOMAIN:-}
       STREAMER_PASSWORD: ${STREAMER_PASSWORD:-}
-      WEBRTC_TRUSTED_PROXIES: ${WEBRTC_TRUSTED_PROXIES:-0.0.0.0}
+      API_TRUSTED_PROXIES: ${API_TRUSTED_PROXIES:-0.0.0.0/0,::/0}
+      WEBRTC_TRUSTED_PROXIES: ${WEBRTC_TRUSTED_PROXIES:-0.0.0.0/0,::/0}
       WEBRTC_ADDITIONAL_HOSTS: ${WEBRTC_ADDITIONAL_HOSTS:-0.0.0.0,rtc.domain.com}
       # you can overwrite built in script using these env variables and proper volume containing new scripts
       HOOK_ONLINE: ${HOOK_ONLINE:-/hooks/stream-online.sh}
