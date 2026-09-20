@@ -15,6 +15,7 @@ export default auth((req) => {
   if (!isLoggedIn && !isLoginPage && !isAuthApi) {
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("callbackUrl", req.nextUrl.pathname);
+    loginUrl.searchParams.set("originUrl", req.nextUrl.origin);
     if (isDockArea) loginUrl.searchParams.set("mode", "streamer");
     return Response.redirect(loginUrl);
   }
@@ -23,6 +24,7 @@ export default auth((req) => {
   if (isDockArea && isLoggedIn && role !== "streamer") {
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("callbackUrl", req.nextUrl.pathname);
+    loginUrl.searchParams.set("originUrl", req.nextUrl.origin);
     loginUrl.searchParams.set("mode", "streamer");
     return Response.redirect(loginUrl);
   }
