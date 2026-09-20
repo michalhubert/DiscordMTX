@@ -14,10 +14,10 @@ FFmpeg transcoding may be added in the future.
 * [MediaMTX](https://github.com/bluenviron/mediamtx) for streaming
 * WebRTC (WHIP ingest / WHEP playback) for low-latency streaming
 * Next.js frontend with a built-in WebRTC player and login gate
-* Optional OAuth/OIDC (Authentik, Authelia, Keycloak, etc.) for homelab users
-* Per-stream viewer password for external/non-Docker viewers
+* "Sign in with Discord" (real Discord OAuth2) for viewers
+* Per-stream, auto-generated viewer password for non-Discord viewers
 * Discord webhooks on stream online/offline events
-* Private streamer HUD / OBS Custom Browser Dock
+* Private streamer HUD / OBS Custom Browser Dock (`/dock`), gated by its own password
 * Automatic credential generation
 * Docker Compose deployment
 
@@ -43,6 +43,7 @@ Create a `.env` file:
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 PLAYER_DOMAIN=stream.example.com
 
+# Also gates access to the /dock OBS HUD
 STREAMER_PASSWORD=change-me
 
 WEBRTC_TRUSTED_PROXIES=0.0.0.0
@@ -53,11 +54,11 @@ MEDIAMTX_HOST=discordmtx
 NEXTAUTH_SECRET=change-me-to-a-random-secret
 NEXTAUTH_URL=https://stream.example.com
 
-# Optional OAuth/OIDC provider for homelab/admin users
-#OAUTH_ISSUER_URL=
-#OAUTH_CLIENT_ID=
-#OAUTH_CLIENT_SECRET=
-#NEXT_PUBLIC_OAUTH_ENABLED=false
+# Discord OAuth app (https://discord.com/developers/applications), lets viewers
+# sign in with their Discord account instead of the generated stream password
+#DISCORD_CLIENT_ID=
+#DISCORD_CLIENT_SECRET=
+#NEXT_PUBLIC_DISCORD_ENABLED=false
 ```
 
 Start the stack:
@@ -66,7 +67,7 @@ Start the stack:
 docker compose up -d
 ```
 
-A viewer password is generated automatically each time the stream starts, and is validated by the Next.js login page. No manual `htpasswd` setup is required. Homelab users can instead sign in via an optional OAuth/OIDC provider.
+A viewer password is generated automatically each time the stream starts, and is validated by the Next.js login page. No manual `htpasswd` setup is required. Viewers can instead sign in with their Discord account if `DISCORD_CLIENT_ID`/`DISCORD_CLIENT_SECRET` are configured.
 
 Check the logs:
 
@@ -87,18 +88,18 @@ docker compose down
 | `DISCORD_WEBHOOK_URL`     | Default Discord webhook used by the stream hooks   |
 | `DISCORD_WEBHOOK_URLS`    | Optional per-path webhook overrides (see below)    |
 | `PLAYER_DOMAIN`           | Domain used for the generated player URL           |
-| `STREAMER_PASSWORD`       | Password for the MediaMTX `streamer` user          |
+| `STREAMER_PASSWORD`       | Password for the MediaMTX `streamer` user, and for the `/dock` OBS HUD |
 | `WEBRTC_TRUSTED_PROXIES`  | Proxies trusted by MediaMTX for WebRTC             |
 | `WEBRTC_ADDITIONAL_HOSTS` | Addresses advertised to the WebRTC player          |
 | `NEXTJS_PORT`             | Host port exposed by the Next.js frontend          |
-| `MEDIAMTX_HOST`           | Hostname/IP of the discordmtx service the Next.js WHEP proxy talks to |
+| `MEDIAMTX_HOST`           | Hostname/IP of the discordmtx service the Next.js WHEP/API proxy talks to |
 | `MEDIAMTX_PORT`           | Port of the discordmtx service the Next.js WHEP proxy talks to (default `8889`) |
+| `MEDIAMTX_API_PORT`       | Port of the discordmtx MediaMTX control API used by `/dock` (default `9997`) |
 | `NEXTAUTH_SECRET`         | Random secret used to sign Next.js session cookies |
 | `NEXTAUTH_URL`            | Public URL of the Next.js frontend                 |
-| `OAUTH_ISSUER_URL`        | Optional OIDC issuer URL for homelab SSO           |
-| `OAUTH_CLIENT_ID`         | Optional OIDC client ID                            |
-| `OAUTH_CLIENT_SECRET`     | Optional OIDC client secret                        |
-| `NEXT_PUBLIC_OAUTH_ENABLED` | Set to `true` to show the SSO button on the login page |
+| `DISCORD_CLIENT_ID`       | Discord OAuth application client ID                |
+| `DISCORD_CLIENT_SECRET`   | Discord OAuth application client secret            |
+| `NEXT_PUBLIC_DISCORD_ENABLED` | Set to `true` to show the "Sign in with Discord" button on the login page |
 
 ### `DISCORD_WEBHOOK_URLS`
 
@@ -218,7 +219,9 @@ The hook scripts resolve the Discord webhook to use for the current path from th
 
 ## Streamer HUD / OBS Custom Browser Dock
 
-A private streamer dashboard is available under `/streamer/dock` (protected by Basic Auth using username `streamer` and your `STREAMER_PASSWORD`).
+A private streamer dashboard is available at `/dock` in the Next.js frontend, gated by its own login (`STREAMER_PASSWORD`) — separate from both the Discord login and the per-stream viewer password, so viewers can never reach it.
+
+It talks to MediaMTX's control API through `/api/mediamtx/*`, a same-origin proxy in the Next.js app (equivalent to the old `/streamer/api/` NGINX proxy to `discordmtx:9997/v3/`).
 
 Features:
 * Real-time viewer count and stream status (Live / Offline)
@@ -229,8 +232,8 @@ Features:
 ### Adding to OBS Studio
 1. In OBS Studio, open **Docks** > **Custom Browser Docks...**
 2. Set **Dock Name** to `Stream HUD` (or any name you prefer).
-3. Set **URL** to `https://stream.example.com/streamer/dock` (or `http://localhost:8080/streamer/dock`).
-4. Enter `streamer` and your `STREAMER_PASSWORD` when prompted for credentials.
+3. Set **URL** to `https://stream.example.com/dock` (or `http://localhost:8080/dock`).
+4. Enter your `STREAMER_PASSWORD` on the login page that appears.
 5. Dock the window anywhere in your OBS workspace.
 
 ## Development
@@ -246,7 +249,7 @@ It reads the same environment variables described in [Configuration](#configurat
 
 ## HTTPS
 
-The Next.js frontend handles authentication (viewer password + optional OAuth/OIDC) and the WHEP signaling proxy, but not TLS.
+The Next.js frontend handles authentication (Discord OAuth + per-stream viewer password) and the WHEP signaling proxy, but not TLS.
 
 For a public deployment, put it behind a TLS-enabled reverse proxy such as Caddy, Traefik, or Cloudflare.
 

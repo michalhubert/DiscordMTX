@@ -6,7 +6,8 @@ import { FormEvent, useState, Suspense } from "react";
 
 function LoginForm() {
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") ?? "/";
+  const isStreamerMode = searchParams.get("mode") === "streamer";
+  const callbackUrl = searchParams.get("callbackUrl") ?? (isStreamerMode ? "/dock" : "/");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -15,10 +16,10 @@ function LoginForm() {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const res = await signIn("credentials", {
-      password,
-      redirect: false,
-    });
+    const res = await signIn(
+      isStreamerMode ? "streamer-password" : "viewer-password",
+      { password, redirect: false }
+    );
     setLoading(false);
     if (res?.error) {
       setError("Invalid password. Try again.");
@@ -33,20 +34,37 @@ function LoginForm() {
         <div className="flex items-center gap-3 mb-8">
           <span className="text-red-500 text-2xl">🔴</span>
           <h1 className="text-white text-xl font-semibold tracking-tight">
-            DiscordMTX
+            DiscordMTX{isStreamerMode ? " — Streamer" : ""}
           </h1>
         </div>
+
+        {!isStreamerMode && process.env.NEXT_PUBLIC_DISCORD_ENABLED === "true" && (
+          <button
+            onClick={() => signIn("discord", { callbackUrl })}
+            className="w-full flex items-center justify-center gap-2 bg-[#5865F2] hover:bg-[#4752C4] text-white font-medium rounded-lg py-2.5 text-sm transition-colors mb-4"
+          >
+            Sign in with Discord
+          </button>
+        )}
+
+        {!isStreamerMode && process.env.NEXT_PUBLIC_DISCORD_ENABLED === "true" && (
+          <div className="relative flex items-center my-4">
+            <div className="flex-grow border-t border-gray-700" />
+            <span className="mx-3 text-gray-500 text-xs">or</span>
+            <div className="flex-grow border-t border-gray-700" />
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-gray-400 text-sm mb-1">
-              Viewer Password
+              {isStreamerMode ? "Streamer Password" : "Viewer Password"}
             </label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter stream password"
+              placeholder={isStreamerMode ? "Enter streamer password" : "Enter stream password"}
               required
               className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-red-500 transition-colors"
             />
@@ -61,24 +79,14 @@ function LoginForm() {
             disabled={loading}
             className="w-full bg-red-600 hover:bg-red-500 disabled:bg-red-900 text-white font-medium rounded-lg py-2.5 text-sm transition-colors"
           >
-            {loading ? "Signing in…" : "Watch Stream"}
+            {loading ? "Signing in…" : isStreamerMode ? "Open Dock" : "Watch Stream"}
           </button>
         </form>
 
-        {process.env.NEXT_PUBLIC_OAUTH_ENABLED === "true" && (
-          <div className="mt-4">
-            <div className="relative flex items-center my-4">
-              <div className="flex-grow border-t border-gray-700" />
-              <span className="mx-3 text-gray-500 text-xs">or</span>
-              <div className="flex-grow border-t border-gray-700" />
-            </div>
-            <button
-              onClick={() => signIn("homelab-oauth", { callbackUrl })}
-              className="w-full bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white font-medium rounded-lg py-2.5 text-sm transition-colors"
-            >
-              Sign in with Homelab SSO
-            </button>
-          </div>
+        {!isStreamerMode && (
+          <p className="mt-6 text-center text-xs text-gray-600">
+            Don&apos;t have Discord? Ask the streamer for the viewer password.
+          </p>
         )}
       </div>
     </div>

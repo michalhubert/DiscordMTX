@@ -1,25 +1,23 @@
 import NextAuth from "next-auth";
 import type { NextAuthConfig } from "next-auth";
+import Discord from "next-auth/providers/discord";
 import Credentials from "next-auth/providers/credentials";
 
 export const config: NextAuthConfig = {
   providers: [
-    // OAuth/OIDC provider (Authentik, Authelia, Keycloak, etc.)
-    ...(process.env.OAUTH_ISSUER_URL
+    // Real Discord OAuth login (https://discord.com/developers/applications)
+    ...(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET
       ? [
-          {
-            id: "homelab-oauth",
-            name: "Homelab",
-            type: "oidc" as const,
-            issuer: process.env.OAUTH_ISSUER_URL,
-            clientId: process.env.OAUTH_CLIENT_ID,
-            clientSecret: process.env.OAUTH_CLIENT_SECRET,
-          },
+          Discord({
+            clientId: process.env.DISCORD_CLIENT_ID,
+            clientSecret: process.env.DISCORD_CLIENT_SECRET,
+          }),
         ]
       : []),
 
-    // Per-stream viewer password (written by stream-online.sh)
+    // Per-stream viewer password (written by stream-online.sh), for viewers without Discord
     Credentials({
+      id: "viewer-password",
       name: "Viewer Password",
       credentials: {
         password: { label: "Password", type: "password" },
@@ -36,6 +34,20 @@ export const config: NextAuthConfig = {
         return { id: "viewer", name: "Viewer", role: "viewer" };
       },
     }),
+
+    // Static admin/streamer password, used to access the OBS streamer dock (/dock)
+    Credentials({
+      id: "streamer-password",
+      name: "Streamer Password",
+      credentials: {
+        password: { label: "Password", type: "password" },
+      },
+      async authorize({ password }) {
+        const streamerPassword = process.env.STREAMER_PASSWORD;
+        if (!streamerPassword || password !== streamerPassword) return null;
+        return { id: "streamer", name: "Streamer", role: "streamer" };
+      },
+    }),
   ],
 
   pages: {
@@ -45,6 +57,18 @@ export const config: NextAuthConfig = {
   callbacks: {
     authorized({ auth }) {
       return !!auth?.user;
+    },
+    jwt({ token, user, account }) {
+      if (user) {
+        token.role = account?.provider === "discord" ? "discord" : (user as { role?: string }).role ?? "viewer";
+      }
+      return token;
+    },
+    session({ session, token }) {
+      if (session.user) {
+        (session.user as { role?: string }).role = token.role as string | undefined;
+      }
+      return session;
     },
   },
 

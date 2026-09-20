@@ -44,14 +44,17 @@ services:
     environment:
       MEDIAMTX_HOST: ${MEDIAMTX_HOST:-discordmtx}
       MEDIAMTX_PORT: ${MEDIAMTX_PORT:-8889}
+      MEDIAMTX_API_PORT: ${MEDIAMTX_API_PORT:-9997}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-changeme-use-a-random-secret}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-}
-      # Optional OAuth/OIDC provider (Authentik, Authelia, Keycloak, etc.)
-      OAUTH_ISSUER_URL: ${OAUTH_ISSUER_URL:-}
-      OAUTH_CLIENT_ID: ${OAUTH_CLIENT_ID:-}
-      OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET:-}
-      # Set to "true" to show the SSO button on the login page
-      NEXT_PUBLIC_OAUTH_ENABLED: ${NEXT_PUBLIC_OAUTH_ENABLED:-false}
+      # Streamer password, also used by MediaMTX's "streamer" WHIP publish user.
+      # Grants access to the /dock OBS HUD.
+      STREAMER_PASSWORD: ${STREAMER_PASSWORD:-}
+      # Discord OAuth app credentials (https://discord.com/developers/applications)
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      # Set to "true" to show the "Sign in with Discord" button on the login page
+      NEXT_PUBLIC_DISCORD_ENABLED: ${NEXT_PUBLIC_DISCORD_ENABLED:-false}
 
     volumes:
       - ../auth:/auth:ro # read viewer-token written by stream-online.sh
