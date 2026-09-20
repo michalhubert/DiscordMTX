@@ -2,8 +2,11 @@ import NextAuth from "next-auth";
 import type { NextAuthConfig } from "next-auth";
 import Discord from "next-auth/providers/discord";
 import Credentials from "next-auth/providers/credentials";
+import { readFileSync } from "fs";
+import { authConfig } from "./auth.config";
 
 export const config: NextAuthConfig = {
+  ...authConfig,
   providers: [
     // Real Discord OAuth login (https://discord.com/developers/applications)
     ...(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET
@@ -23,7 +26,6 @@ export const config: NextAuthConfig = {
         password: { label: "Password", type: "password" },
       },
       async authorize({ password }) {
-        const { readFileSync } = await import("fs");
         let token: string;
         try {
           token = readFileSync("/auth/viewer-token", "utf8").trim();
