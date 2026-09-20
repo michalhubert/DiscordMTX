@@ -23,8 +23,10 @@ jobs:
         image:
           - name: discordmtx
             dockerfile: ./Dockerfile
-          - name: discordmtx-nginx
-            dockerfile: ./nginx.Dockerfile
+            context: .
+          - name: discordmtx-nextjs
+            dockerfile: ./nextjs/Dockerfile
+            context: ./nextjs
 
     steps:
       - name: Checkout
@@ -54,7 +56,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
-          context: .
+          context: ${{ matrix.image.context }}
           file: ${{ matrix.image.dockerfile }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
