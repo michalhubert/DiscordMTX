@@ -5,17 +5,19 @@
 
 Made for personal streaming with whatever quality and framerate you want - no need to pay for Nitro just to get readable text and bearable stream quality.
 
-A small Docker Compose setup built around [MediaMTX](https://github.com/bluenviron/mediamtx) for direct, no-transcode WebRTC streaming. Bitrate, resolution, and framerate are fully controlled by the streaming application (e.g. OBS), with NGINX viewer authentication and Discord webhook hooks.
+A small Docker Compose setup built around [MediaMTX](https://github.com/bluenviron/mediamtx) for direct, no-transcode WebRTC streaming. Bitrate, resolution, and framerate are fully controlled by the streaming application (e.g. OBS), with a Next.js viewer/auth frontend and Discord webhook hooks.
 
 FFmpeg transcoding may be added in the future.
 
 ## Features
 
 * [MediaMTX](https://github.com/bluenviron/mediamtx) for streaming
-* WebRTC playback
-* NGINX reverse proxy with Basic Auth
+* WebRTC (WHIP ingest / WHEP playback) for low-latency streaming
+* Next.js frontend with a built-in WebRTC player and login gate
+* "Sign in with Discord" (real Discord OAuth2) for viewers
+* Per-stream, auto-generated viewer password for non-Discord viewers
 * Discord webhooks on stream online/offline events
-* Private streamer HUD / OBS Custom Browser Dock
+* Private streamer HUD / OBS Custom Browser Dock (`/dock`), gated by its own password
 * Automatic credential generation
 * Docker Compose deployment
 
@@ -41,13 +43,22 @@ Create a `.env` file:
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 PLAYER_DOMAIN=stream.example.com
 
+# Also gates access to the /dock OBS HUD
 STREAMER_PASSWORD=change-me
 
 WEBRTC_TRUSTED_PROXIES=0.0.0.0
 WEBRTC_ADDITIONAL_HOSTS=192.168.1.100,203.0.113.10
 
-NGINX_PORT=8080
-STREAM_UPSTREAM_HOST=discordmtx
+NEXTJS_PORT=8080
+MEDIAMTX_HOST=discordmtx
+NEXTAUTH_SECRET=change-me-to-a-random-secret
+NEXTAUTH_URL=https://stream.example.com
+
+# Discord OAuth app (https://discord.com/developers/applications), lets viewers
+# sign in with their Discord account instead of the generated stream password
+#DISCORD_CLIENT_ID=
+#DISCORD_CLIENT_SECRET=
+#NEXT_PUBLIC_DISCORD_ENABLED=false
 ```
 
 Start the stack:
@@ -56,7 +67,7 @@ Start the stack:
 docker compose up -d
 ```
 
-Credentials are generated automatically when the stream starts. No manual `htpasswd` setup is required.
+A viewer password is generated automatically each time the stream starts, and is validated by the Next.js login page. No manual `htpasswd` setup is required. Viewers can instead sign in with their Discord account if `DISCORD_CLIENT_ID`/`DISCORD_CLIENT_SECRET` are configured.
 
 Check the logs:
 
@@ -77,11 +88,18 @@ docker compose down
 | `DISCORD_WEBHOOK_URL`     | Default Discord webhook used by the stream hooks   |
 | `DISCORD_WEBHOOK_URLS`    | Optional per-path webhook overrides (see below)    |
 | `PLAYER_DOMAIN`           | Domain used for the generated player URL           |
-| `STREAMER_PASSWORD`       | Password for the MediaMTX `streamer` user          |
+| `STREAMER_PASSWORD`       | Password for the MediaMTX `streamer` user, and for the `/dock` OBS HUD |
 | `WEBRTC_TRUSTED_PROXIES`  | Proxies trusted by MediaMTX for WebRTC             |
 | `WEBRTC_ADDITIONAL_HOSTS` | Addresses advertised to the WebRTC player          |
-| `NGINX_PORT`              | Host port exposed by NGINX                         |
-| `STREAM_UPSTREAM_HOST`    | Hostname/IP of the discordmtx service NGINX proxies to |
+| `NEXTJS_PORT`             | Host port exposed by the Next.js frontend          |
+| `MEDIAMTX_HOST`           | Hostname/IP of the discordmtx service the Next.js WHEP/API proxy talks to |
+| `MEDIAMTX_PORT`           | Port of the discordmtx service the Next.js WHEP proxy talks to (default `8889`) |
+| `MEDIAMTX_API_PORT`       | Port of the discordmtx MediaMTX control API used by `/dock` (default `9997`) |
+| `NEXTAUTH_SECRET`         | Random secret used to sign Next.js session cookies |
+| `NEXTAUTH_URL`            | Public URL of the Next.js frontend                 |
+| `DISCORD_CLIENT_ID`       | Discord OAuth application client ID                |
+| `DISCORD_CLIENT_SECRET`   | Discord OAuth application client secret            |
+| `NEXT_PUBLIC_DISCORD_ENABLED` | Set to `true` to show the "Sign in with Discord" button on the login page |
 
 ### `DISCORD_WEBHOOK_URLS`
 
@@ -119,15 +137,15 @@ The web interface/player itself can still be served through the normal Cloudflar
 
 ## Ports
 
-|   Port | Protocol | Description   |
-| -----: | :------: | ------------- |
-| `8889` |    TCP   | WebRTC / WHIP |
-| `8189` |    UDP   | WebRTC media  |
-| `8080` |    TCP   | NGINX         |
+|   Port | Protocol | Description                                  |
+| -----: | :------: | --------------------------------------------- |
+| `8889` |    TCP   | WebRTC signaling — OBS's WHIP publish, MediaMTX's own WHEP playback |
+| `8189` |    UDP   | WebRTC media (RTP), direct browser ↔ MediaMTX |
+| `8080` |    TCP   | Next.js frontend (player, login, WHEP signaling proxy) |
 
-The NGINX port can be changed with `NGINX_PORT`.
+The Next.js port can be changed with `NEXTJS_PORT`.
 
-NGINX proxies to the `discordmtx` container on port `8889` over plain HTTP. The upstream hostname/IP can be changed with `STREAM_UPSTREAM_HOST` (defaults to `discordmtx`); the port and protocol are fixed.
+MediaMTX's WebRTC signaling port `8889` (used for both OBS's WHIP ingest and the player's WHEP playback) is exposed to the host so OBS (running on the streamer's own machine, outside this stack's Docker network) can reach MediaMTX directly for WHIP publishing — see [Publishing with OBS Studio](#publishing-with-obs-studio) below. Browsers reach it indirectly instead: the Next.js frontend proxies the WHEP SDP signaling request (tiny, low-frequency) to `discordmtx:8889` after checking the viewer's session, while the actual RTP media always flows directly between the browser and MediaMTX over UDP `8189`, so no extra latency is added to the stream itself. The upstream hostname/port used by the proxy can be changed with `MEDIAMTX_HOST`/`MEDIAMTX_PORT` (defaults to `discordmtx:8889`).
 
 ## MediaMTX
 
@@ -138,6 +156,20 @@ default
 ```
 
 The `streamer` user can publish to this path.
+
+### Publishing with OBS Studio
+
+OBS Studio (≥ 30) can publish directly to MediaMTX using the built-in WHIP output. Open **Settings > Stream** and set:
+
+1. **Service**: `WHIP`
+2. **Server**: `http://<server-address>:8889/<path>/whip` (e.g. `http://localhost:8889/default/whip` if OBS runs on the same machine as Docker). Note this uses MediaMTX's port `8889` directly, not the Next.js port `8080` — WHIP is currently published straight to MediaMTX rather than through the Next.js proxy.
+3. **Bearer Token**: `streamer:<STREAMER_PASSWORD>` — OBS only exposes a single "Bearer Token" field, so MediaMTX's username/password pair must be concatenated with a colon (`user:pass`) and passed there; MediaMTX accepts this as an equivalent of HTTP Basic auth. For example, with `STREAMER_PASSWORD=change-me`, the Bearer Token is `streamer:change-me`.
+
+Replace `<server-address>` with the address the server is reachable at (e.g. `localhost` if OBS runs on the same machine as Docker, the LAN IP, or a public domain), and `default` with the path name you want to publish to (see [Dynamic Path Configuration](#dynamic-path-configuration)).
+
+If OBS reports "Could not access the specified channel or stream key" (or similar generic WHIP failures), it usually means either:
+* Port `8889` isn't reachable from the machine running OBS (check firewalls/port forwarding if OBS is remote), or
+* The Bearer Token doesn't match `streamer:<STREAMER_PASSWORD>` exactly (it's case-sensitive, and there is no space around the colon).
 
 ### Dynamic Path Configuration
 
@@ -196,13 +228,15 @@ HOOK_OFFLINE=/hooks/stream-offline.sh
 
 MediaMTX runs the online hook when the stream starts and the offline hook when it stops.
 
-The hooks are also responsible for generating the temporary stream credentials used by the player.
+`stream-online.sh` generates a random per-stream viewer password and writes it to `/auth/viewer-token` (a volume shared with the Next.js container), which the Next.js login page validates against. `stream-offline.sh` deletes it again, immediately invalidating the password once the stream ends. The player URL posted to Discord never contains credentials — viewers enter the password on the Next.js login page.
 
 The hook scripts resolve the Discord webhook to use for the current path from the `DISCORD_WEBHOOK_URLS`/`DISCORD_WEBHOOK_URL` environment variables, which they inherit directly from the container.
 
 ## Streamer HUD / OBS Custom Browser Dock
 
-A private streamer dashboard is available under `/streamer/dock` (protected by Basic Auth using username `streamer` and your `STREAMER_PASSWORD`).
+A private streamer dashboard is available at `/dock` in the Next.js frontend, gated by its own login (`STREAMER_PASSWORD`) — separate from both the Discord login and the per-stream viewer password, so viewers can never reach it.
+
+It talks to MediaMTX's control API through `/api/mediamtx/*`, a same-origin proxy in the Next.js app (equivalent to the old `/streamer/api/` NGINX proxy to `discordmtx:9997/v3/`).
 
 Features:
 * Real-time viewer count and stream status (Live / Offline)
@@ -213,8 +247,8 @@ Features:
 ### Adding to OBS Studio
 1. In OBS Studio, open **Docks** > **Custom Browser Docks...**
 2. Set **Dock Name** to `Stream HUD` (or any name you prefer).
-3. Set **URL** to `https://stream.example.com/streamer/dock` (or `http://localhost:8080/streamer/dock`).
-4. Enter `streamer` and your `STREAMER_PASSWORD` when prompted for credentials.
+3. Set **URL** to `https://stream.example.com/dock` (or `http://localhost:8080/dock`).
+4. Enter your `STREAMER_PASSWORD` on the login page that appears.
 5. Dock the window anywhere in your OBS workspace.
 
 ## Development
@@ -230,7 +264,7 @@ It reads the same environment variables described in [Configuration](#configurat
 
 ## HTTPS
 
-The included NGINX configuration handles authentication and proxying, but not TLS.
+The Next.js frontend handles authentication (Discord OAuth + per-stream viewer password) and the WHEP signaling proxy, but not TLS.
 
 For a public deployment, put it behind a TLS-enabled reverse proxy such as Caddy, Traefik, or Cloudflare.
 
@@ -243,13 +277,11 @@ Keep in mind that HTTPS proxying and WebRTC are separate connections. Cloudflare
 ├── .github/
 ├── dev/
 ├── hooks/
+├── nextjs/
 ├── Dockerfile
 ├── docker-compose.yaml
 ├── entrypoint.sh
 ├── mediamtx.yml
-├── nginx.Dockerfile
-├── nginx.conf.template
-├── nginx-entrypoint.sh
 ├── paths.yml
 └── paths.yml.example
 ```

@@ -22,30 +22,44 @@ services:
 
     volumes:
       - ./hooks:/opt/hooks:ro # custom hooks if needed
-      - ./auth:/auth # place to store .htpasswd, MUST BE THE SAME LOCATION FOR NGINX
+      - ./auth:/auth # shared with nextjs for viewer-token
       - ./paths.yml:/opt/streams/paths.yml:ro # path configuration
 
     ports:
-      - "8889:8889/tcp" # TCP comm, like WHIP or web player
-      - "8189:8189/udp" # av stream goes through UDP
+      # 8889 is exposed so OBS (running on the streamer's own machine, not
+      # inside this Docker network) can reach MediaMTX directly for WHIP
+      # publishing. Next.js still proxies WHEP internally for viewers.
+      - "8889:8889" # WebRTC WHIP publish (OBS) / WHEP signaling
+      - "8189:8189/udp" # RTP media goes direct browser ↔ MediaMTX over UDP
 
     networks:
       - stream
 
-  nginx:
-    image: mikko99/discordmtx-nginx:latest
-    container_name: discordmtx-nginx
+  nextjs:
+    image: mikko99/discordmtx-nextjs:latest
+    container_name: discordmtx-nextjs
     restart: unless-stopped
 
     environment:
-      # Hostname or IP of the discordmtx container/service NGINX proxies to (port and protocol stay fixed)
-      STREAM_UPSTREAM_HOST: ${STREAM_UPSTREAM_HOST:-discordmtx}
+      MEDIAMTX_HOST: ${MEDIAMTX_HOST:-discordmtx}
+      MEDIAMTX_PORT: ${MEDIAMTX_PORT:-8889}
+      MEDIAMTX_API_PORT: ${MEDIAMTX_API_PORT:-9997}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-changeme-use-a-random-secret}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-}
+      # Streamer password, also used by MediaMTX's "streamer" WHIP publish user.
+      # Grants access to the /dock OBS HUD.
+      STREAMER_PASSWORD: ${STREAMER_PASSWORD:-}
+      # Discord OAuth app credentials (https://discord.com/developers/applications)
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      # Set to "true" to show the "Sign in with Discord" button on the login page
+      NEXT_PUBLIC_DISCORD_ENABLED: ${NEXT_PUBLIC_DISCORD_ENABLED:-false}
 
     volumes:
-      - ./auth:/auth:ro
+      - ./auth:/auth:ro # read viewer-token written by stream-online.sh
 
     ports:
-      - "${NGINX_PORT:-8080}:80"
+      - "${NEXTJS_PORT:-8080}:3000"
 
     depends_on:
       - discordmtx

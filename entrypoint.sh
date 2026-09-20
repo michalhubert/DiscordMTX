@@ -26,12 +26,11 @@ HOOK_OFFLINE="${HOOK_OFFLINE:-/hooks/stream-offline.sh}"
 export DISCORD_WEBHOOK_URL="${DISCORD_WEBHOOK_URL:-}"
 export DISCORD_WEBHOOK_URLS="${DISCORD_WEBHOOK_URLS:-}"
 
-# Initialize streamer authentication file for NGINX streamer dashboard
+# The "streamer" password below is used for two things:
+#  - MediaMTX's "streamer" internal user (WHIP publish, from OBS)
+#  - The Next.js /dock (OBS HUD) login, checked directly against this env var
 STREAMER_PASSWORD="${STREAMER_PASSWORD:-discordmtx_streamer_pass}"
 mkdir -p /auth
-STREAMER_HASH="$(openssl passwd -6 "$STREAMER_PASSWORD")"
-printf 'streamer:%s\n' "$STREAMER_HASH" > /auth/.streamer_htpasswd
-chmod 644 /auth/.streamer_htpasswd 2>/dev/null || true
 
 # MediaMTX natively supports configuration through MTX_<PARAMNAME> environment
 # variables (see https://mediamtx.org/docs/features/configuration), so the
