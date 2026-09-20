@@ -23,32 +23,40 @@ services:
 
     volumes:
       - ../hooks:/opt/hooks:ro # custom hooks if needed
-      - ../auth:/auth # place to store .htpasswd, MUST BE THE SAME LOCATION FOR NGINX
+      - ../auth:/auth # shared with nextjs for viewer-token
       - ../paths.yml:/opt/streams/paths.yml:ro # path configuration
 
     ports:
-      - "8889:8889/tcp" # TCP comm, like WHIP or web player
-      - "8189:8189/udp" # av stream goes through UDP
+      # 8889 is NOT exposed to host — Next.js proxies WHEP internally
+      - "8189:8189/udp" # RTP media goes direct browser ↔ MediaMTX over UDP
 
     networks:
       - stream
 
-  nginx:
+  nextjs:
     build:
-      context: ..
-      dockerfile: nginx.Dockerfile
-    container_name: discordmtx-nginx
+      context: ../nextjs
+      dockerfile: Dockerfile
+    container_name: discordmtx-nextjs
     restart: unless-stopped
 
     environment:
-      # Hostname or IP of the discordmtx container/service NGINX proxies to (port and protocol stay fixed)
-      STREAM_UPSTREAM_HOST: ${STREAM_UPSTREAM_HOST:-discordmtx}
+      MEDIAMTX_HOST: ${MEDIAMTX_HOST:-discordmtx}
+      MEDIAMTX_PORT: ${MEDIAMTX_PORT:-8889}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-changeme-use-a-random-secret}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-}
+      # Optional OAuth/OIDC provider (Authentik, Authelia, Keycloak, etc.)
+      OAUTH_ISSUER_URL: ${OAUTH_ISSUER_URL:-}
+      OAUTH_CLIENT_ID: ${OAUTH_CLIENT_ID:-}
+      OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET:-}
+      # Set to "true" to show the SSO button on the login page
+      NEXT_PUBLIC_OAUTH_ENABLED: ${NEXT_PUBLIC_OAUTH_ENABLED:-false}
 
     volumes:
-      - ../auth:/auth:ro
+      - ../auth:/auth:ro # read viewer-token written by stream-online.sh
 
     ports:
-      - "${NGINX_PORT:-8080}:80"
+      - "${NEXTJS_PORT:-8080}:3000"
 
     depends_on:
       - discordmtx

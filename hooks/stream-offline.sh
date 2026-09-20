@@ -1,2 +1,2 @@
 #!/bin/sh
-rm -f /auth/.htpasswd
+rm -f /auth/viewer-token

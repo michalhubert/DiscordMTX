@@ -5,15 +5,17 @@
 
 Made for personal streaming with whatever quality and framerate you want - no need to pay for Nitro just to get readable text and bearable stream quality.
 
-A small Docker Compose setup built around [MediaMTX](https://github.com/bluenviron/mediamtx) for direct, no-transcode WebRTC streaming. Bitrate, resolution, and framerate are fully controlled by the streaming application (e.g. OBS), with NGINX viewer authentication and Discord webhook hooks.
+A small Docker Compose setup built around [MediaMTX](https://github.com/bluenviron/mediamtx) for direct, no-transcode WebRTC streaming. Bitrate, resolution, and framerate are fully controlled by the streaming application (e.g. OBS), with a Next.js viewer/auth frontend and Discord webhook hooks.
 
 FFmpeg transcoding may be added in the future.
 
 ## Features
 
 * [MediaMTX](https://github.com/bluenviron/mediamtx) for streaming
-* WebRTC playback
-* NGINX reverse proxy with Basic Auth
+* WebRTC (WHIP ingest / WHEP playback) for low-latency streaming
+* Next.js frontend with a built-in WebRTC player and login gate
+* Optional OAuth/OIDC (Authentik, Authelia, Keycloak, etc.) for homelab users
+* Per-stream viewer password for external/non-Docker viewers
 * Discord webhooks on stream online/offline events
 * Automatic credential generation
 * Docker Compose deployment
@@ -45,8 +47,16 @@ STREAMER_PASSWORD=change-me
 WEBRTC_TRUSTED_PROXIES=0.0.0.0
 WEBRTC_ADDITIONAL_HOSTS=192.168.1.100,203.0.113.10
 
-NGINX_PORT=8080
-STREAM_UPSTREAM_HOST=discordmtx
+NEXTJS_PORT=8080
+MEDIAMTX_HOST=discordmtx
+NEXTAUTH_SECRET=change-me-to-a-random-secret
+NEXTAUTH_URL=https://stream.example.com
+
+# Optional OAuth/OIDC provider for homelab/admin users
+#OAUTH_ISSUER_URL=
+#OAUTH_CLIENT_ID=
+#OAUTH_CLIENT_SECRET=
+#NEXT_PUBLIC_OAUTH_ENABLED=false
 ```
 
 Start the stack:
@@ -55,7 +65,7 @@ Start the stack:
 docker compose up -d
 ```
 
-Credentials are generated automatically when the stream starts. No manual `htpasswd` setup is required.
+A viewer password is generated automatically each time the stream starts, and is validated by the Next.js login page. No manual `htpasswd` setup is required. Homelab users can instead sign in via an optional OAuth/OIDC provider.
 
 Check the logs:
 
@@ -79,8 +89,15 @@ docker compose down
 | `STREAMER_PASSWORD`       | Password for the MediaMTX `streamer` user          |
 | `WEBRTC_TRUSTED_PROXIES`  | Proxies trusted by MediaMTX for WebRTC             |
 | `WEBRTC_ADDITIONAL_HOSTS` | Addresses advertised to the WebRTC player          |
-| `NGINX_PORT`              | Host port exposed by NGINX                         |
-| `STREAM_UPSTREAM_HOST`    | Hostname/IP of the discordmtx service NGINX proxies to |
+| `NEXTJS_PORT`             | Host port exposed by the Next.js frontend          |
+| `MEDIAMTX_HOST`           | Hostname/IP of the discordmtx service the Next.js WHEP proxy talks to |
+| `MEDIAMTX_PORT`           | Port of the discordmtx service the Next.js WHEP proxy talks to (default `8889`) |
+| `NEXTAUTH_SECRET`         | Random secret used to sign Next.js session cookies |
+| `NEXTAUTH_URL`            | Public URL of the Next.js frontend                 |
+| `OAUTH_ISSUER_URL`        | Optional OIDC issuer URL for homelab SSO           |
+| `OAUTH_CLIENT_ID`         | Optional OIDC client ID                            |
+| `OAUTH_CLIENT_SECRET`     | Optional OIDC client secret                        |
+| `NEXT_PUBLIC_OAUTH_ENABLED` | Set to `true` to show the SSO button on the login page |
 
 ### `DISCORD_WEBHOOK_URLS`
 
@@ -118,15 +135,14 @@ The web interface/player itself can still be served through the normal Cloudflar
 
 ## Ports
 
-|   Port | Protocol | Description   |
-| -----: | :------: | ------------- |
-| `8889` |    TCP   | WebRTC / WHIP |
-| `8189` |    UDP   | WebRTC media  |
-| `8080` |    TCP   | NGINX         |
+|   Port | Protocol | Description                                  |
+| -----: | :------: | --------------------------------------------- |
+| `8189` |    UDP   | WebRTC media (RTP), direct browser ↔ MediaMTX |
+| `8080` |    TCP   | Next.js frontend (player, login, WHEP signaling proxy) |
 
-The NGINX port can be changed with `NGINX_PORT`.
+The Next.js port can be changed with `NEXTJS_PORT`.
 
-NGINX proxies to the `discordmtx` container on port `8889` over plain HTTP. The upstream hostname/IP can be changed with `STREAM_UPSTREAM_HOST` (defaults to `discordmtx`); the port and protocol are fixed.
+MediaMTX's WebRTC signaling port `8889` (used for both OBS's WHIP ingest and the player's WHEP playback) is **not** exposed to the host. OBS reaches it directly over the internal Docker network on port `8889`; browsers reach it indirectly — the Next.js frontend proxies the WHEP SDP signaling request (tiny, low-frequency) to `discordmtx:8889` after checking the viewer's session, while the actual RTP media always flows directly between the browser and MediaMTX over UDP `8189`, so no extra latency is added to the stream itself. The upstream hostname/port used by the proxy can be changed with `MEDIAMTX_HOST`/`MEDIAMTX_PORT` (defaults to `discordmtx:8889`).
 
 ## MediaMTX
 
@@ -195,7 +211,7 @@ HOOK_OFFLINE=/hooks/stream-offline.sh
 
 MediaMTX runs the online hook when the stream starts and the offline hook when it stops.
 
-The hooks are also responsible for generating the temporary stream credentials used by the player.
+`stream-online.sh` generates a random per-stream viewer password and writes it to `/auth/viewer-token` (a volume shared with the Next.js container), which the Next.js login page validates against. `stream-offline.sh` deletes it again, immediately invalidating the password once the stream ends. The player URL posted to Discord never contains credentials — viewers enter the password on the Next.js login page.
 
 The hook scripts resolve the Discord webhook to use for the current path from the `DISCORD_WEBHOOK_URLS`/`DISCORD_WEBHOOK_URL` environment variables, which they inherit directly from the container.
 
@@ -212,7 +228,7 @@ It reads the same environment variables described in [Configuration](#configurat
 
 ## HTTPS
 
-The included NGINX configuration handles authentication and proxying, but not TLS.
+The Next.js frontend handles authentication (viewer password + optional OAuth/OIDC) and the WHEP signaling proxy, but not TLS.
 
 For a public deployment, put it behind a TLS-enabled reverse proxy such as Caddy, Traefik, or Cloudflare.
 
@@ -225,13 +241,11 @@ Keep in mind that HTTPS proxying and WebRTC are separate connections. Cloudflare
 ├── .github/
 ├── dev/
 ├── hooks/
+├── nextjs/
 ├── Dockerfile
 ├── docker-compose.yaml
 ├── entrypoint.sh
 ├── mediamtx.yml
-├── nginx.Dockerfile
-├── nginx.conf.template
-├── nginx-entrypoint.sh
 ├── paths.yml
 └── paths.yml.example
 ```
