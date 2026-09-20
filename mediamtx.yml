@@ -1,29 +1,30 @@
+api: true
+apiAddress: :9997
+apiTrustedProxies:
+  - 0.0.0.0/0
+  - ::/0
+
 authMethod: internal
 
 authInternalUsers:
   # Owner. Publish permissions are added dynamically per path by entrypoint.sh
   # via MTX_AUTHINTERNALUSERS_0_PERMISSIONS_* environment variables.
   - user: streamer
-    permissions: []
-
-  # Frens (through nginx, or directly when nginx is not used). Read permissions
-  # are added dynamically per path by entrypoint.sh via
-  # MTX_AUTHINTERNALUSERS_1_PERMISSIONS_* environment variables.
-  - user: any
-    permissions: []
-
-  # API local only
-  - user: any
-    ips:
-      - 127.0.0.1
-      - ::1
     permissions:
       - action: api
       - action: metrics
-      - action: pprof
+
+  # Unauthenticated / anonymous internal users (for API queries from NGINX/hooks)
+  - user: any
+    permissions:
+      - action: api
+      - action: metrics
 
 webrtc: true
 webrtcAddress: :8889
 webrtcLocalUDPAddress: :8189
+webrtcTrustedProxies:
+  - 0.0.0.0/0
+  - ::/0
 
 webrtcIPsFromInterfaces: true
