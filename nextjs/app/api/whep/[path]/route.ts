@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { rememberViewerIdentity } from "@/lib/viewerIdentities";
 import { NextRequest } from "next/server";
 
 export async function POST(
@@ -23,17 +24,32 @@ export async function POST(
   });
 
   const responseHeaders = new Headers();
-  // Forward headers needed for WHEP (Location, Link for ICE servers, etc.)
   for (const [key, value] of res.headers.entries()) {
     const lower = key.toLowerCase();
     if (
       lower === "content-type" ||
       lower === "location" ||
       lower === "link" ||
-      lower === "accept-patch"
+      lower === "accept-patch" ||
+      lower === "id"
     ) {
       responseHeaders.set(key, value);
     }
+  }
+
+  const location = res.headers.get("location");
+  // MediaMTX's "Id" response header carries the same session id used by
+  // /v3/webrtcsessions/list. The Location header's path segment is a
+  // separate WHEP resource identifier and is NOT guaranteed to match it,
+  // so we must key off "Id" rather than parsing Location.
+  const sessionId = res.headers.get("id") || location?.split("/").filter(Boolean).pop();
+  const user = session.user as { name?: string | null; image?: string | null; role?: string };
+  if (res.ok && sessionId) {
+    rememberViewerIdentity(sessionId, {
+      name: user.role === "discord" ? user.name || "Guest" : "Guest",
+      image: user.role === "discord" ? user.image ?? null : null,
+      role: user.role,
+    });
   }
 
   return new Response(await res.text(), {

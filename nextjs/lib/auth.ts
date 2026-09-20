@@ -14,6 +14,16 @@ export const config: NextAuthConfig = {
           Discord({
             clientId: process.env.DISCORD_CLIENT_ID,
             clientSecret: process.env.DISCORD_CLIENT_SECRET,
+            authorization: { params: { scope: "identify" } },
+            profile(profile) {
+              return {
+                id: profile.id,
+                name: profile.username,
+                image: profile.avatar
+                  ? `https://cdn.discordapp.com/avatars/${profile.id}/${profile.avatar}.png`
+                  : null,
+              };
+            },
           }),
         ]
       : []),
@@ -63,6 +73,8 @@ export const config: NextAuthConfig = {
     jwt({ token, user, account }) {
       if (user) {
         token.role = account?.provider === "discord" ? "discord" : (user as { role?: string }).role ?? "viewer";
+      } else if (!token.role) {
+        token.role = token.sub === "viewer" ? "viewer" : token.sub === "streamer" ? "streamer" : "discord";
       }
       return token;
     },

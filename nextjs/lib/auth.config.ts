@@ -1,10 +1,10 @@
 import type { NextAuthConfig } from "next-auth";
 
-// Edge-safe NextAuth config (no Node.js-only modules like `fs`).
-// Used by the middleware (which runs in the Edge runtime). Providers that
-// need Node APIs (Credentials providers reading files) are added only in
-// the full config (lib/auth.ts), which runs in the Node.js runtime.
+// Edge-safe NextAuth config, used by the middleware (Edge runtime).
+// Providers needing Node APIs (fs) are added only in lib/auth.ts.
 export const authConfig: NextAuthConfig = {
+  trustHost: true,
+
   providers: [],
 
   pages: {
@@ -18,6 +18,8 @@ export const authConfig: NextAuthConfig = {
     jwt({ token, user, account }) {
       if (user) {
         token.role = account?.provider === "discord" ? "discord" : (user as { role?: string }).role ?? "viewer";
+      } else if (!token.role) {
+        token.role = token.sub === "viewer" ? "viewer" : token.sub === "streamer" ? "streamer" : "discord";
       }
       return token;
     },

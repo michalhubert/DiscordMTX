@@ -28,7 +28,10 @@ services:
       - ../paths.yml:/opt/streams/paths.yml:ro # path configuration
 
     ports:
-      # 8889 is NOT exposed to host — Next.js proxies WHEP internally
+      # 8889 is exposed so OBS (running on the streamer's own machine, not
+      # inside this Docker network) can reach MediaMTX directly for WHIP
+      # publishing. Next.js still proxies WHEP internally for viewers.
+      - "8889:8889" # WebRTC WHIP publish (OBS) / WHEP signaling
       - "8189:8189/udp" # RTP media goes direct browser ↔ MediaMTX over UDP
 
     networks:

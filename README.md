@@ -139,12 +139,13 @@ The web interface/player itself can still be served through the normal Cloudflar
 
 |   Port | Protocol | Description                                  |
 | -----: | :------: | --------------------------------------------- |
+| `8889` |    TCP   | WebRTC signaling — OBS's WHIP publish, MediaMTX's own WHEP playback |
 | `8189` |    UDP   | WebRTC media (RTP), direct browser ↔ MediaMTX |
 | `8080` |    TCP   | Next.js frontend (player, login, WHEP signaling proxy) |
 
 The Next.js port can be changed with `NEXTJS_PORT`.
 
-MediaMTX's WebRTC signaling port `8889` (used for both OBS's WHIP ingest and the player's WHEP playback) is **not** exposed to the host. OBS reaches it directly over the internal Docker network on port `8889`; browsers reach it indirectly — the Next.js frontend proxies the WHEP SDP signaling request (tiny, low-frequency) to `discordmtx:8889` after checking the viewer's session, while the actual RTP media always flows directly between the browser and MediaMTX over UDP `8189`, so no extra latency is added to the stream itself. The upstream hostname/port used by the proxy can be changed with `MEDIAMTX_HOST`/`MEDIAMTX_PORT` (defaults to `discordmtx:8889`).
+MediaMTX's WebRTC signaling port `8889` (used for both OBS's WHIP ingest and the player's WHEP playback) is exposed to the host so OBS (running on the streamer's own machine, outside this stack's Docker network) can reach MediaMTX directly for WHIP publishing — see [Publishing with OBS Studio](#publishing-with-obs-studio) below. Browsers reach it indirectly instead: the Next.js frontend proxies the WHEP SDP signaling request (tiny, low-frequency) to `discordmtx:8889` after checking the viewer's session, while the actual RTP media always flows directly between the browser and MediaMTX over UDP `8189`, so no extra latency is added to the stream itself. The upstream hostname/port used by the proxy can be changed with `MEDIAMTX_HOST`/`MEDIAMTX_PORT` (defaults to `discordmtx:8889`).
 
 ## MediaMTX
 
@@ -155,6 +156,20 @@ default
 ```
 
 The `streamer` user can publish to this path.
+
+### Publishing with OBS Studio
+
+OBS Studio (≥ 30) can publish directly to MediaMTX using the built-in WHIP output. Open **Settings > Stream** and set:
+
+1. **Service**: `WHIP`
+2. **Server**: `http://<server-address>:8889/<path>/whip` (e.g. `http://localhost:8889/default/whip` if OBS runs on the same machine as Docker). Note this uses MediaMTX's port `8889` directly, not the Next.js port `8080` — WHIP is currently published straight to MediaMTX rather than through the Next.js proxy.
+3. **Bearer Token**: `streamer:<STREAMER_PASSWORD>` — OBS only exposes a single "Bearer Token" field, so MediaMTX's username/password pair must be concatenated with a colon (`user:pass`) and passed there; MediaMTX accepts this as an equivalent of HTTP Basic auth. For example, with `STREAMER_PASSWORD=change-me`, the Bearer Token is `streamer:change-me`.
+
+Replace `<server-address>` with the address the server is reachable at (e.g. `localhost` if OBS runs on the same machine as Docker, the LAN IP, or a public domain), and `default` with the path name you want to publish to (see [Dynamic Path Configuration](#dynamic-path-configuration)).
+
+If OBS reports "Could not access the specified channel or stream key" (or similar generic WHIP failures), it usually means either:
+* Port `8889` isn't reachable from the machine running OBS (check firewalls/port forwarding if OBS is remote), or
+* The Bearer Token doesn't match `streamer:<STREAMER_PASSWORD>` exactly (it's case-sensitive, and there is no space around the colon).
 
 ### Dynamic Path Configuration
 

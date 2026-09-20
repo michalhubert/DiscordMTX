@@ -18,9 +18,6 @@ export async function GET(
 
   try {
     const res = await fetch(upstream, {
-      // MediaMTX's "any" internal user is unauthenticated for the API when
-      // no Authorization header is sent — match nginx's previous behaviour
-      // of stripping it out.
       headers: { Accept: "application/json" },
       cache: "no-store",
     });

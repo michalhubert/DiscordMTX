@@ -1,1 +1,2 @@
 dev/.env
+/auth/viewer-token

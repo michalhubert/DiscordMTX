@@ -16,8 +16,8 @@ export default async function StreamPage({
   const whepUrl = `/api/whep/${path}`;
 
   return (
-    <main className="min-h-screen bg-black flex flex-col items-center justify-center">
-      <PlayerClient path={path} whepUrl={whepUrl} />
+    <main className="h-screen w-screen bg-black overflow-hidden">
+      <PlayerClient whepUrl={whepUrl} />
     </main>
   );
 }

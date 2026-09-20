@@ -9,6 +9,9 @@ type WebrtcSession = {
   created?: string;
   bytesSent?: number;
   remoteAddr?: string;
+  viewerName?: string | null;
+  viewerImage?: string | null;
+  viewerRole?: string | null;
 };
 
 type MtxPath = {
@@ -20,7 +23,7 @@ type MtxPath = {
 type StreamEvent = {
   type: "join" | "leave";
   text: string;
-  ip: string;
+  viewer: string;
   time: string;
 };
 
@@ -47,21 +50,10 @@ function formatDuration(startTime?: string) {
   return `${hrs}h ${mins % 60}m`;
 }
 
-function cleanRemoteAddr(addr?: string) {
-  if (!addr) return "unknown";
-  if (addr.startsWith("[")) {
-    const end = addr.indexOf("]");
-    return end !== -1 ? addr.slice(1, end) : addr;
-  }
-  const lastColon = addr.lastIndexOf(":");
-  return lastColon !== -1 ? addr.slice(0, lastColon) : addr;
-}
-
 export default function DockClient() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [status, setStatus] = useState<"checking" | "live" | "offline" | "error">("checking");
   const [viewerCount, setViewerCount] = useState(0);
-  const [pathCount, setPathCount] = useState(0);
   const [readers, setReaders] = useState<WebrtcSession[]>([]);
   const [events, setEvents] = useState<StreamEvent[]>([]);
   const [viewerPassword, setViewerPassword] = useState<string | null>(null);
@@ -69,7 +61,7 @@ export default function DockClient() {
 
   const soundEnabledRef = useRef(soundEnabled);
   soundEnabledRef.current = soundEnabled;
-  const knownSessionIds = useRef<Set<string>>(new Set());
+  const knownSessions = useRef<Map<string, string>>(new Map());
   const initialLoad = useRef(true);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
@@ -109,10 +101,10 @@ export default function DockClient() {
     }
   }
 
-  function logEvent(type: "join" | "leave", text: string, ip: string) {
+  function logEvent(type: "join" | "leave", text: string, viewer: string) {
     const now = new Date();
     const timeStr = now.toTimeString().split(" ")[0];
-    setEvents((prev) => [{ type, text, ip, time: timeStr }, ...prev].slice(0, MAX_EVENTS));
+    setEvents((prev) => [{ type, text, viewer, time: timeStr }, ...prev].slice(0, MAX_EVENTS));
   }
 
   useEffect(() => {
@@ -121,7 +113,7 @@ export default function DockClient() {
     async function refreshData() {
       try {
         const [sessionsRes, pathsRes] = await Promise.allSettled([
-          fetch("/api/mediamtx/webrtcsessions/list"),
+          fetch("/api/dock/viewers"),
           fetch("/api/mediamtx/paths/list"),
         ]);
 
@@ -175,26 +167,27 @@ export default function DockClient() {
 
         const totalPathReaders = paths.reduce((acc, p) => acc + (p.readers ? p.readers.length : 0), 0);
         setViewerCount(Math.max(currentReaders.length, totalPathReaders));
-        setPathCount(activePublishers.length > 0 ? activePublishers.length : paths.length);
 
-        const currentSessionIds = new Set(currentReaders.map((r) => r.id));
+        const currentSessions = new Map(
+          currentReaders.map((r) => [r.id, r.viewerName || "Guest"])
+        );
 
         if (!initialLoad.current && !hasAuthError) {
           for (const reader of currentReaders) {
-            if (!knownSessionIds.current.has(reader.id)) {
-              const ip = cleanRemoteAddr(reader.remoteAddr);
-              logEvent("join", `joined /${reader.path || "stream"}`, ip);
+            if (!knownSessions.current.has(reader.id)) {
+              const viewer = reader.viewerName || "Guest";
+              logEvent("join", `joined /${reader.path || "stream"}`, viewer);
               playChime(true);
             }
           }
-          for (const oldId of knownSessionIds.current) {
-            if (!currentSessionIds.has(oldId)) {
-              logEvent("leave", "disconnected", "viewer");
+          for (const [oldId, oldViewer] of knownSessions.current) {
+            if (!currentSessions.has(oldId)) {
+              logEvent("leave", "disconnected", oldViewer);
               playChime(false);
             }
           }
         }
-        knownSessionIds.current = currentSessionIds;
+        knownSessions.current = currentSessions;
         initialLoad.current = false;
 
         setReaders(currentReaders);
@@ -205,7 +198,7 @@ export default function DockClient() {
     }
 
     refreshData();
-    const interval = setInterval(refreshData, 2000);
+    const interval = setInterval(refreshData, 1000);
     return () => {
       cancelled = true;
       clearInterval(interval);
@@ -297,14 +290,10 @@ export default function DockClient() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 mb-3">
+      <div className="mb-3">
         <div className="bg-[#1b1b22] border border-[#2c2c38] rounded-lg px-3 py-2">
           <div className="text-[11px] text-gray-400 uppercase mb-0.5">Active Viewers</div>
           <div className="text-xl font-bold text-green-500">{viewerCount}</div>
-        </div>
-        <div className="bg-[#1b1b22] border border-[#2c2c38] rounded-lg px-3 py-2">
-          <div className="text-[11px] text-gray-400 uppercase mb-0.5">Active Streams</div>
-          <div className="text-xl font-bold">{pathCount}</div>
         </div>
       </div>
 
@@ -323,11 +312,21 @@ export default function DockClient() {
               key={r.id}
               className="bg-[#1b1b22] border border-[#2c2c38] rounded-md px-2.5 py-2 flex justify-between items-center text-xs"
             >
-              <div className="flex flex-col gap-0.5">
-                <span className="font-mono font-semibold text-sky-400">{cleanRemoteAddr(r.remoteAddr)}</span>
-                <span className="text-[10px] text-gray-400">
-                  Path: <strong>{r.path || "default"}</strong>
-                </span>
+              <div className="flex items-center gap-2">
+                {r.viewerImage ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={r.viewerImage} alt="" className="w-6 h-6 rounded-full shrink-0" />
+                ) : (
+                  <div className="w-6 h-6 rounded-full bg-[#2c2c38] shrink-0 flex items-center justify-center text-[10px] font-semibold text-gray-400">
+                    {(r.viewerName || "G").charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="flex flex-col gap-0.5">
+                  <span className="font-semibold text-sky-400">{r.viewerName || "Guest"}</span>
+                  <span className="text-[10px] text-gray-400">
+                    Path: <strong>{r.path || "default"}</strong>
+                  </span>
+                </div>
               </div>
               <div className="text-right text-[11px] text-gray-400 flex flex-col gap-0.5">
                 <span>⏱ {formatDuration(r.created)}</span>
@@ -366,7 +365,7 @@ export default function DockClient() {
                 >
                   {e.type === "join" ? "JOIN" : "LEAVE"}
                 </span>
-                <span className="font-mono">{e.ip}</span>
+                <span className="font-semibold">{e.viewer}</span>
                 <span className="text-gray-400 text-[10px]">{e.text}</span>
               </div>
               <span className="font-mono text-gray-400 text-[10px]">{e.time}</span>
