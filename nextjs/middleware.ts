@@ -1,4 +1,5 @@
 import NextAuth from "next-auth";
+import { NextResponse } from "next/server";
 import { authConfig } from "@/lib/auth.config";
 
 const { auth } = NextAuth(authConfig);
@@ -11,8 +12,12 @@ export default auth((req) => {
     req.nextUrl.pathname.startsWith("/dock") ||
     req.nextUrl.pathname.startsWith("/api/mediamtx") ||
     req.nextUrl.pathname.startsWith("/api/dock");
+  const dockAuthDisabled = process.env.DISABLE_DOCK_AUTH === "true";
 
   if (!isLoggedIn && !isLoginPage && !isAuthApi) {
+    if (isDockArea && dockAuthDisabled) {
+      return NextResponse.next();
+    }
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("callbackUrl", req.nextUrl.pathname);
     if (isDockArea) loginUrl.searchParams.set("mode", "streamer");
@@ -20,7 +25,7 @@ export default auth((req) => {
   }
 
   const role = (req.auth?.user as { role?: string } | undefined)?.role;
-  if (isDockArea && isLoggedIn && role !== "streamer") {
+  if (isDockArea && isLoggedIn && role !== "streamer" && !dockAuthDisabled) {
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("callbackUrl", req.nextUrl.pathname);
     loginUrl.searchParams.set("mode", "streamer");

@@ -54,6 +54,8 @@ services:
       DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
       # Set to "true" to show the "Sign in with Discord" button on the login page
       NEXT_PUBLIC_DISCORD_ENABLED: ${NEXT_PUBLIC_DISCORD_ENABLED:-false}
+      # Set to "true" to disable authentication on /dock (useful when behind reverse proxy with local-only access)
+      DISABLE_DOCK_AUTH: ${DISABLE_DOCK_AUTH:-false}
 
     volumes:
       - ./auth:/auth:ro # read viewer-token written by stream-online.sh
