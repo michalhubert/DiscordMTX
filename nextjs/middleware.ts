@@ -9,7 +9,8 @@ export default auth((req) => {
   const isAuthApi = req.nextUrl.pathname.startsWith("/api/auth");
   const isDockArea =
     req.nextUrl.pathname.startsWith("/dock") ||
-    req.nextUrl.pathname.startsWith("/api/mediamtx");
+    req.nextUrl.pathname.startsWith("/api/mediamtx") ||
+    req.nextUrl.pathname.startsWith("/api/dock");
 
   if (!isLoggedIn && !isLoginPage && !isAuthApi) {
     const loginUrl = new URL("/login", req.url);

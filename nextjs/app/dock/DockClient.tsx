@@ -64,6 +64,8 @@ export default function DockClient() {
   const [pathCount, setPathCount] = useState(0);
   const [readers, setReaders] = useState<WebrtcSession[]>([]);
   const [events, setEvents] = useState<StreamEvent[]>([]);
+  const [viewerPassword, setViewerPassword] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const soundEnabledRef = useRef(soundEnabled);
   soundEnabledRef.current = soundEnabled;
@@ -210,6 +212,39 @@ export default function DockClient() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refreshPassword() {
+      try {
+        const res = await fetch("/api/dock/password");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setViewerPassword(data.password ?? null);
+      } catch (err) {
+        console.error("Error fetching viewer password:", err);
+      }
+    }
+
+    refreshPassword();
+    const interval = setInterval(refreshPassword, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  async function copyPassword() {
+    if (!viewerPassword) return;
+    try {
+      await navigator.clipboard.writeText(viewerPassword);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (err) {
+      console.error("Failed to copy password:", err);
+    }
+  }
+
   const statusLabel =
     status === "live" ? "LIVE" : status === "error" ? "API ERROR" : status === "offline" ? "OFFLINE" : "Checking";
 
@@ -243,6 +278,23 @@ export default function DockClient() {
             <span>{soundEnabled ? "Sound On" : "Muted"}</span>
           </button>
         </div>
+      </div>
+
+      <div className="flex justify-between items-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide my-3">
+        <span>Current Viewer Password</span>
+      </div>
+      <div className="bg-[#1b1b22] border border-[#2c2c38] rounded-lg px-3 py-2 flex items-center justify-between gap-2 mb-3">
+        <span className="font-mono text-sm text-amber-400 truncate">
+          {viewerPassword ?? (status === "live" ? "unavailable" : "no active stream")}
+        </span>
+        <button
+          onClick={copyPassword}
+          disabled={!viewerPassword}
+          title="Copy viewer password"
+          className="bg-[#2c2c38] border border-[#3a3a48] text-gray-200 px-2 py-1 rounded-md text-[11px] hover:bg-indigo-500/30 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+        >
+          {copied ? "Copied!" : "Copy"}
+        </button>
       </div>
 
       <div className="grid grid-cols-2 gap-2 mb-3">
