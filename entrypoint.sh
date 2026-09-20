@@ -26,15 +26,32 @@ HOOK_OFFLINE="${HOOK_OFFLINE:-/hooks/stream-offline.sh}"
 export DISCORD_WEBHOOK_URL="${DISCORD_WEBHOOK_URL:-}"
 export DISCORD_WEBHOOK_URLS="${DISCORD_WEBHOOK_URLS:-}"
 
+# Initialize streamer authentication file for NGINX streamer dashboard
+STREAMER_PASSWORD="${STREAMER_PASSWORD:-discordmtx_streamer_pass}"
+mkdir -p /auth
+STREAMER_HASH="$(openssl passwd -6 "$STREAMER_PASSWORD")"
+printf 'streamer:%s\n' "$STREAMER_HASH" > /auth/.streamer_htpasswd
+chmod 644 /auth/.streamer_htpasswd 2>/dev/null || true
+
 # MediaMTX natively supports configuration through MTX_<PARAMNAME> environment
 # variables (see https://mediamtx.org/docs/features/configuration), so the
 # configuration is built by exporting these variables instead of rendering a
 # whole mediamtx.yml file.
 export MTX_AUTHINTERNALUSERS_0_USER="streamer"
-export MTX_AUTHINTERNALUSERS_0_PASS="${STREAMER_PASSWORD:-}"
+export MTX_AUTHINTERNALUSERS_0_PASS="$STREAMER_PASSWORD"
+
+# Grant streamer API and metrics permissions at index 0 and 1
+mtx_export "MTX_AUTHINTERNALUSERS_0_PERMISSIONS_0_ACTION" "api"
+mtx_export "MTX_AUTHINTERNALUSERS_0_PERMISSIONS_1_ACTION" "metrics"
+
+# Grant anonymous/viewer user API and metrics permissions
+export MTX_AUTHINTERNALUSERS_1_USER="any"
+mtx_export "MTX_AUTHINTERNALUSERS_1_PERMISSIONS_0_ACTION" "api"
+mtx_export "MTX_AUTHINTERNALUSERS_1_PERMISSIONS_1_ACTION" "metrics"
 
 # Arrays are overridden with a plain comma-separated list, no YAML needed.
-export MTX_WEBRTCTRUSTEDPROXIES="${WEBRTC_TRUSTED_PROXIES:-}"
+export MTX_WEBRTCTRUSTEDPROXIES="${WEBRTC_TRUSTED_PROXIES:-0.0.0.0/0,::/0}"
+export MTX_APITRUSTEDPROXIES="${API_TRUSTED_PROXIES:-0.0.0.0/0,::/0}"
 export MTX_WEBRTCADDITIONALHOSTS="${WEBRTC_ADDITIONAL_HOSTS:-}"
 
 # Add publish/read permissions and hooks for every path defined in $PATHS_FILE.
@@ -51,11 +68,12 @@ while [ "$i" -lt "$COUNT" ]; do
   # Path names with "-" or "_" are ambiguous for MediaMTX's env var parser and are not supported.
   ENV_NAME=$(echo "$NAME" | tr '[:lower:]' '[:upper:]')
 
-  mtx_export "MTX_AUTHINTERNALUSERS_0_PERMISSIONS_${i}_ACTION" "publish"
-  mtx_export "MTX_AUTHINTERNALUSERS_0_PERMISSIONS_${i}_PATH" "$NAME"
+  PERM_INDEX=$((i + 2))
+  mtx_export "MTX_AUTHINTERNALUSERS_0_PERMISSIONS_${PERM_INDEX}_ACTION" "publish"
+  mtx_export "MTX_AUTHINTERNALUSERS_0_PERMISSIONS_${PERM_INDEX}_PATH" "$NAME"
 
-  mtx_export "MTX_AUTHINTERNALUSERS_1_PERMISSIONS_${i}_ACTION" "read"
-  mtx_export "MTX_AUTHINTERNALUSERS_1_PERMISSIONS_${i}_PATH" "$NAME"
+  mtx_export "MTX_AUTHINTERNALUSERS_1_PERMISSIONS_${PERM_INDEX}_ACTION" "read"
+  mtx_export "MTX_AUTHINTERNALUSERS_1_PERMISSIONS_${PERM_INDEX}_PATH" "$NAME"
 
   mtx_export "MTX_PATHS_${ENV_NAME}_RUNONONLINE" "$HOOK_ON"
   mtx_export "MTX_PATHS_${ENV_NAME}_RUNONOFFLINE" "$HOOK_OFF"
