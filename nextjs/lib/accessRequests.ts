@@ -76,3 +76,7 @@ export function listPendingRequests(): PendingRequest[] {
   pruneStale();
   return Array.from(pendingRequests.values()).sort((a, b) => a.requestedAt - b.requestedAt);
 }
+
+export function clearApprovedViewers(path: string): void {
+  approvedViewers.delete(path);
+}

@@ -23,7 +23,10 @@ export async function GET(
   }
 
   const { path } = await params;
-  const user = session.user as { name?: string | null; image?: string | null; role?: string };
+  type SessionUser =
+    | { name: string; image: string | null; role: "discord" }
+    | { name: null; image: null; role: "viewer" | "streamer" };
+  const user = session.user as SessionUser;
 
   if (user.role === "streamer" || getPathVisibility(path) !== "private") {
     return json({ status: "approved" });
@@ -33,8 +36,8 @@ export async function GET(
   const status = requestAccess(
     path,
     ip,
-    user.role === "discord" ? user.name ?? null : null,
-    user.role === "discord" ? user.image ?? null : null
+    user.role === "discord" ? user.name : null,
+    user.role === "discord" ? user.image : null
   );
   return json({ status });
 }
