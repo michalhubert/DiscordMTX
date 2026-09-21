@@ -24,7 +24,6 @@ services:
 
     volumes:
       - ../hooks:/opt/hooks:ro # custom hooks if needed
-      - ../auth:/auth # shared with nextjs for viewer-token
       - ../paths.yml:/opt/streams/paths.yml:ro # path configuration
 
     ports:
@@ -62,7 +61,6 @@ services:
       DISABLE_DOCK_AUTH: ${DISABLE_DOCK_AUTH:-false}
 
     volumes:
-      - ../auth:/auth:ro # read viewer-token written by stream-online.sh
       - ../config:/data/sqlite # persists the SQLite database (saved /stream settings)
 
     ports:

@@ -235,7 +235,7 @@ HOOK_OFFLINE=/hooks/stream-offline.sh
 
 MediaMTX runs the online hook when the stream starts and the offline hook when it stops.
 
-`stream-online.sh` generates a random per-stream viewer password and writes it to `/auth/viewer-token` (a volume shared with the Next.js container), which the Next.js login page validates against. `stream-offline.sh` deletes it again, immediately invalidating the password once the stream ends. The player URL posted to Discord never contains credentials - viewers enter the password on the Next.js login page.
+Viewer passwords are stored per-path in the SQLite database and can be rotated via the streamer dock (/dock). When a password is rotated, all existing viewer sessions are invalidated and viewers must re-login with the new password. The player URL posted to Discord never contains credentials - viewers enter the password on the Next.js login page.
 
 The hook scripts resolve the Discord webhook to use for the current path from the `DISCORD_WEBHOOK_URLS`/`DISCORD_WEBHOOK_URL` environment variables, which they inherit directly from the container.
 

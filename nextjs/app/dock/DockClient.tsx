@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bell, BellOff, Clock, Globe, HardDrive, Lock } from "lucide-react";
+import { Bell, BellOff, Clock, Globe, HardDrive, Lock, RefreshCw } from "lucide-react";
 
 type WebrtcSession = {
   id: string;
@@ -75,6 +75,7 @@ export default function DockClient() {
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
   const [busyPath, setBusyPath] = useState<string | null>(null);
   const [busyRequestKey, setBusyRequestKey] = useState<string | null>(null);
+  const [currentPath, setCurrentPath] = useState<string>("default");
 
   const soundEnabledRef = useRef(soundEnabled);
   soundEnabledRef.current = soundEnabled;
@@ -227,7 +228,7 @@ export default function DockClient() {
 
     async function refreshPassword() {
       try {
-        const res = await fetch("/api/dock/password");
+        const res = await fetch(`/api/dock/password?path=${encodeURIComponent(currentPath)}`);
         if (!res.ok) return;
         const data = await res.json();
         if (!cancelled) setViewerPassword(data.password ?? null);
@@ -391,6 +392,19 @@ export default function DockClient() {
     }
   }
 
+  async function rotatePassword() {
+    try {
+      const res = await fetch(`/api/dock/password?path=${encodeURIComponent(currentPath)}`, { method: "POST" });
+      if (!res.ok) return;
+      const data = await res.json();
+      setViewerPassword(data.password);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (err) {
+      console.error("Failed to rotate password:", err);
+    }
+  }
+
   const statusLabel =
     status === "live" ? "LIVE" : status === "error" ? "API ERROR" : status === "offline" ? "OFFLINE" : "Checking";
 
@@ -433,14 +447,23 @@ export default function DockClient() {
         <span className="font-mono text-sm text-amber-400 truncate">
           {viewerPassword ?? (status === "live" ? "unavailable" : "no active stream")}
         </span>
-        <button
-          onClick={copyPassword}
-          disabled={!viewerPassword}
-          title="Copy viewer password"
-          className="bg-[#2c2c38] border border-[#3a3a48] text-gray-200 px-2 py-1 rounded-md text-[11px] hover:bg-indigo-500/30 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-        >
-          {copied ? "Copied!" : "Copy"}
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={rotatePassword}
+            title="Rotate viewer password"
+            className="bg-[#2c2c38] border border-[#3a3a48] text-gray-200 px-2 py-1 rounded-md text-[11px] hover:bg-amber-500/30 hover:text-white transition-colors shrink-0"
+          >
+            <RefreshCw className="w-3 h-3" />
+          </button>
+          <button
+            onClick={copyPassword}
+            disabled={!viewerPassword}
+            title="Copy viewer password"
+            className="bg-[#2c2c38] border border-[#3a3a48] text-gray-200 px-2 py-1 rounded-md text-[11px] hover:bg-indigo-500/30 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+          >
+            {copied ? "Copied!" : "Copy"}
+          </button>
+        </div>
       </div>
 
       <div className="mb-3">
