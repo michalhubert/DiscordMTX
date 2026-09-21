@@ -1,5 +1,7 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
+# python3/make/g++ are needed to build the better-sqlite3 native addon
+RUN apk add --no-cache python3 make g++
 COPY package.json package-lock.json ./
 RUN npm ci
 
@@ -16,9 +18,15 @@ ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
+# Persistent storage for the SQLite database (stream settings)
+RUN mkdir -p /data/sqlite && chown -R nextjs:nodejs /data
+VOLUME ["/data/sqlite"]
+
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# better-sqlite3's native addon isn't included in the standalone trace, copy it explicitly
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/better-sqlite3 ./node_modules/better-sqlite3
 
 USER nextjs
 EXPOSE 3000

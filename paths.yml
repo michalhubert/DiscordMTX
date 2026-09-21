@@ -1,2 +1,4 @@
 paths:
-  - name: default
+  - name: default # example for OBS
+
+  - name: browser # example for browser panel
