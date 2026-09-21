@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { Satellite } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +45,7 @@ export default async function Home() {
     <div className="min-h-screen bg-gray-950 flex items-center justify-center">
       <div className="text-center">
         <div className="flex items-center justify-center gap-3 mb-4">
-          <span className="text-gray-600 text-3xl">📡</span>
+          <Satellite className="w-7 h-7 text-gray-600" />
           <h1 className="text-white text-2xl font-semibold">DiscordMTX</h1>
         </div>
         <p className="text-gray-400 text-sm">No stream is currently running.</p>

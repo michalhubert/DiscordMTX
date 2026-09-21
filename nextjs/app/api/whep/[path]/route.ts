@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { rememberViewerIdentity } from "@/lib/viewerIdentities";
+import { getClientIp } from "@/lib/net";
 import { NextRequest } from "next/server";
 
 export async function POST(
@@ -45,10 +46,14 @@ export async function POST(
   const sessionId = res.headers.get("id") || location?.split("/").filter(Boolean).pop();
   const user = session.user as { name?: string | null; image?: string | null; role?: string };
   if (res.ok && sessionId) {
+    const ip = getClientIp(req);
     rememberViewerIdentity(sessionId, {
-      name: user.role === "discord" ? user.name || "Guest" : "Guest",
+      // Discord viewers show their real name/avatar; everyone else (viewer-password) is
+      // identified by IP address instead, since there's no per-person account for them.
+      name: user.role === "discord" ? user.name || "Guest" : ip,
       image: user.role === "discord" ? user.image ?? null : null,
       role: user.role,
+      ip,
     });
   }
 

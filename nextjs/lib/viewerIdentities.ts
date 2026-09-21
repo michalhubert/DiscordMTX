@@ -2,6 +2,7 @@ export type ViewerIdentity = {
   name: string;
   image: string | null;
   role?: string;
+  ip?: string;
   addedAt: number;
 };
 

@@ -37,6 +37,7 @@ export async function GET() {
         viewerName: identity?.name ?? null,
         viewerImage: identity?.image ?? null,
         viewerRole: identity?.role ?? null,
+        viewerIp: identity?.ip ?? null,
       };
     });
 

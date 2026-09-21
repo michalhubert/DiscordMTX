@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Bell, BellOff, Clock, Globe, HardDrive, Lock } from "lucide-react";
 
 type WebrtcSession = {
   id: string;
@@ -12,6 +13,7 @@ type WebrtcSession = {
   viewerName?: string | null;
   viewerImage?: string | null;
   viewerRole?: string | null;
+  viewerIp?: string | null;
 };
 
 type MtxPath = {
@@ -25,6 +27,16 @@ type StreamEvent = {
   text: string;
   viewer: string;
   time: string;
+};
+
+type Visibility = "public" | "private";
+
+type PendingRequest = {
+  ip: string;
+  path: string;
+  name: string | null;
+  image: string | null;
+  requestedAt: number;
 };
 
 const MAX_EVENTS = 20;
@@ -58,6 +70,11 @@ export default function DockClient() {
   const [events, setEvents] = useState<StreamEvent[]>([]);
   const [viewerPassword, setViewerPassword] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [availablePaths, setAvailablePaths] = useState<string[]>([]);
+  const [visibilities, setVisibilities] = useState<Record<string, Visibility>>({});
+  const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
+  const [busyPath, setBusyPath] = useState<string | null>(null);
+  const [busyRequestKey, setBusyRequestKey] = useState<string | null>(null);
 
   const soundEnabledRef = useRef(soundEnabled);
   soundEnabledRef.current = soundEnabled;
@@ -227,6 +244,142 @@ export default function DockClient() {
     };
   }, []);
 
+  // Populates the path list (for visibility toggles) from MediaMTX's configured + runtime paths.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refreshPaths() {
+      try {
+        const [configRes, runtimeRes] = await Promise.allSettled([
+          fetch("/api/mediamtx/config/paths/list"),
+          fetch("/api/mediamtx/paths/list"),
+        ]);
+
+        const names = new Set<string>();
+        for (const res of [configRes, runtimeRes]) {
+          if (res.status === "fulfilled" && res.value.ok) {
+            const data = await res.value.json();
+            for (const item of data.items ?? []) {
+              if (item?.name) names.add(item.name as string);
+            }
+          }
+        }
+
+        if (!cancelled) setAvailablePaths(Array.from(names).sort());
+      } catch (err) {
+        console.error("Failed to load MediaMTX path list:", err);
+      }
+    }
+
+    refreshPaths();
+    const interval = setInterval(refreshPaths, 10000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refreshVisibilities() {
+      try {
+        const res = await fetch("/api/streams/visibility");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setVisibilities(data ?? {});
+      } catch (err) {
+        console.error("Failed to load stream visibility settings:", err);
+      }
+    }
+
+    refreshVisibilities();
+    const interval = setInterval(refreshVisibilities, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refreshPending() {
+      try {
+        const res = await fetch("/api/streams/pending");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setPendingRequests(data.items ?? []);
+      } catch (err) {
+        console.error("Failed to load pending join requests:", err);
+      }
+    }
+
+    refreshPending();
+    const interval = setInterval(refreshPending, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  async function toggleVisibility(path: string) {
+    const next: Visibility = visibilities[path] === "private" ? "public" : "private";
+    setBusyPath(path);
+    try {
+      const res = await fetch("/api/streams/visibility", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path, visibility: next }),
+      });
+      if (res.ok) {
+        setVisibilities((prev) => ({ ...prev, [path]: next }));
+      }
+    } catch (err) {
+      console.error("Failed to update stream visibility:", err);
+    } finally {
+      setBusyPath(null);
+    }
+  }
+
+  async function approveRequest(req: PendingRequest) {
+    const requestKey = `${req.path}:${req.ip}`;
+    setBusyRequestKey(requestKey);
+    try {
+      const res = await fetch("/api/streams/pending/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: req.path, ip: req.ip }),
+      });
+      if (res.ok) {
+        setPendingRequests((prev) => prev.filter((r) => `${r.path}:${r.ip}` !== requestKey));
+      }
+    } catch (err) {
+      console.error("Failed to approve join request:", err);
+    } finally {
+      setBusyRequestKey(null);
+    }
+  }
+
+  async function denyRequest(req: PendingRequest) {
+    const requestKey = `${req.path}:${req.ip}`;
+    setBusyRequestKey(requestKey);
+    try {
+      const res = await fetch("/api/streams/pending/deny", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: req.path, ip: req.ip }),
+      });
+      if (res.ok) {
+        setPendingRequests((prev) => prev.filter((r) => `${r.path}:${r.ip}` !== requestKey));
+      }
+    } catch (err) {
+      console.error("Failed to deny join request:", err);
+    } finally {
+      setBusyRequestKey(null);
+    }
+  }
+
   async function copyPassword() {
     if (!viewerPassword) return;
     try {
@@ -267,7 +420,7 @@ export default function DockClient() {
               !soundEnabled ? "bg-indigo-500/20 border-indigo-500 text-indigo-400" : ""
             }`}
           >
-            <span>{soundEnabled ? "🔔" : "🔕"}</span>
+            {soundEnabled ? <Bell className="w-3.5 h-3.5" /> : <BellOff className="w-3.5 h-3.5" />}
             <span>{soundEnabled ? "Sound On" : "Muted"}</span>
           </button>
         </div>
@@ -298,6 +451,97 @@ export default function DockClient() {
       </div>
 
       <div className="flex justify-between items-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide my-3">
+        <span>Stream Access</span>
+      </div>
+      <ul className="flex flex-col gap-1.5 mb-3 list-none">
+        {availablePaths.length === 0 ? (
+          <li className="p-4 text-center text-gray-400 italic bg-[#1b1b22]/50 rounded-md border border-dashed border-[#2c2c38]">
+            No paths configured
+          </li>
+        ) : (
+          availablePaths.map((p) => {
+            const visibility = visibilities[p] ?? "private";
+            const isPrivate = visibility === "private";
+            return (
+              <li
+                key={p}
+                className="bg-[#1b1b22] border border-[#2c2c38] rounded-md px-2.5 py-2 flex justify-between items-center text-xs"
+              >
+                <span className="font-mono text-sky-400">/{p}</span>
+                <button
+                  onClick={() => toggleVisibility(p)}
+                  disabled={busyPath === p}
+                  title="Toggle between public (anyone can join) and private (streamer approves each viewer)"
+                  className={`text-[11px] font-semibold px-2 py-1 rounded-full uppercase transition-colors disabled:opacity-40 ${
+                    isPrivate ? "bg-amber-500/15 text-amber-400" : "bg-green-500/15 text-green-500"
+                  }`}
+                >
+                  <span className="inline-flex items-center gap-1">
+                    {isPrivate ? <Lock className="w-3 h-3" /> : <Globe className="w-3 h-3" />}
+                    {isPrivate ? "Private" : "Public"}
+                  </span>
+                </button>
+              </li>
+            );
+          })
+        )}
+      </ul>
+
+      <div className="flex justify-between items-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide my-3">
+        <span>Pending Requests</span>
+        {pendingRequests.length > 0 && (
+          <span className="text-[10px] font-bold text-amber-400">{pendingRequests.length}</span>
+        )}
+      </div>
+      <ul className="flex flex-col gap-1.5 max-h-[220px] overflow-y-auto list-none mb-3">
+        {pendingRequests.length === 0 ? (
+          <li className="p-4 text-center text-gray-400 italic bg-[#1b1b22]/50 rounded-md border border-dashed border-[#2c2c38]">
+            No pending requests
+          </li>
+        ) : (
+          pendingRequests.map((req) => (
+            <li
+              key={`${req.path}:${req.ip}`}
+              className="bg-[#1b1b22] border border-[#2c2c38] rounded-md px-2.5 py-2 flex justify-between items-center text-xs gap-2"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                {req.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={req.image} alt="" className="w-6 h-6 rounded-full shrink-0" />
+                ) : (
+                  <div className="w-6 h-6 rounded-full bg-[#2c2c38] shrink-0 flex items-center justify-center text-[10px] font-semibold text-gray-400">
+                    {(req.name || req.ip).charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <span className="font-semibold text-sky-400 truncate">{req.name ?? req.ip}</span>
+                  <span className="text-[10px] text-gray-400">
+                    wants to join <strong>/{req.path}</strong>
+                  </span>
+                </div>
+              </div>
+              <div className="flex gap-1.5 shrink-0">
+                <button
+                  onClick={() => approveRequest(req)}
+                  disabled={busyRequestKey === `${req.path}:${req.ip}`}
+                  className="bg-green-500/20 text-green-500 px-2 py-1 rounded-md text-[11px] font-semibold hover:bg-green-500/30 transition-colors disabled:opacity-40"
+                >
+                  Approve
+                </button>
+                <button
+                  onClick={() => denyRequest(req)}
+                  disabled={busyRequestKey === `${req.path}:${req.ip}`}
+                  className="bg-red-500/20 text-red-500 px-2 py-1 rounded-md text-[11px] font-semibold hover:bg-red-500/30 transition-colors disabled:opacity-40"
+                >
+                  Deny
+                </button>
+              </div>
+            </li>
+          ))
+        )}
+      </ul>
+
+      <div className="flex justify-between items-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide my-3">
         <span>Current Viewers</span>
         <span className="text-[10px] opacity-70">polling</span>
       </div>
@@ -322,15 +566,21 @@ export default function DockClient() {
                   </div>
                 )}
                 <div className="flex flex-col gap-0.5">
-                  <span className="font-semibold text-sky-400">{r.viewerName || "Guest"}</span>
+                  <span className="font-semibold text-sky-400">
+                    {r.viewerRole === "discord" ? r.viewerName || "Guest" : r.viewerIp || r.viewerName || "Guest"}
+                  </span>
                   <span className="text-[10px] text-gray-400">
                     Path: <strong>{r.path || "default"}</strong>
                   </span>
                 </div>
               </div>
               <div className="text-right text-[11px] text-gray-400 flex flex-col gap-0.5">
-                <span>⏱ {formatDuration(r.created)}</span>
-                <span>📦 {formatBytes(r.bytesSent)}</span>
+                <span className="inline-flex items-center justify-end gap-1">
+                  <Clock className="w-3 h-3" /> {formatDuration(r.created)}
+                </span>
+                <span className="inline-flex items-center justify-end gap-1">
+                  <HardDrive className="w-3 h-3" /> {formatBytes(r.bytesSent)}
+                </span>
               </div>
             </li>
           ))
