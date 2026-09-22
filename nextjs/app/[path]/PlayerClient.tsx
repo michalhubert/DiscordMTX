@@ -24,8 +24,20 @@ export default function PlayerClient({ whepUrl }: Props) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(1);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const controlsHideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const RECONNECT_DELAY_MS = 3000;
+  const CONTROLS_HIDE_DELAY_MS = 3000;
+
+  useEffect(() => {
+    const query = window.matchMedia("(pointer: coarse), (hover: none), (max-width: 768px)");
+    const update = () => setIsTouchDevice(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -173,6 +185,40 @@ export default function PlayerClient({ whepUrl }: Props) {
     videoRef.current?.play().catch(() => {});
   }
 
+  function scheduleControlsHide() {
+    if (isTouchDevice) return;
+    if (controlsHideTimeout.current) clearTimeout(controlsHideTimeout.current);
+    controlsHideTimeout.current = setTimeout(() => {
+      setControlsVisible(false);
+    }, CONTROLS_HIDE_DELAY_MS);
+  }
+
+  function showControls() {
+    setControlsVisible(true);
+    scheduleControlsHide();
+  }
+
+  function handleContainerInteraction() {
+    if (isTouchDevice) return;
+    setControlsVisible((prev) => {
+      const next = !prev;
+      if (next) scheduleControlsHide();
+      return next;
+    });
+  }
+
+  useEffect(() => {
+    if (isTouchDevice) {
+      setControlsVisible(true);
+      if (controlsHideTimeout.current) clearTimeout(controlsHideTimeout.current);
+      return;
+    }
+    scheduleControlsHide();
+    return () => {
+      if (controlsHideTimeout.current) clearTimeout(controlsHideTimeout.current);
+    };
+  }, [isTouchDevice]);
+
   function handleVolumeChange(e: React.ChangeEvent<HTMLInputElement>) {
     const next = Number(e.target.value);
     setVolume(next);
@@ -208,7 +254,12 @@ export default function PlayerClient({ whepUrl }: Props) {
   };
 
   return (
-    <div ref={containerRef} className="relative w-full h-full bg-black group">
+    <div
+      ref={containerRef}
+      className="relative w-full h-full bg-black"
+      onMouseMove={showControls}
+      onClick={handleContainerInteraction}
+    >
       <video
         ref={videoRef}
         autoPlay
@@ -224,13 +275,18 @@ export default function PlayerClient({ whepUrl }: Props) {
         </div>
       )}
 
-      <div className="absolute bottom-0 left-0 right-0 flex items-center justify-end gap-3 px-4 py-3 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className={`absolute bottom-0 left-0 right-0 flex items-center justify-end gap-4 px-4 py-4 bg-gradient-to-t from-black/70 to-transparent transition-opacity max-sm:opacity-100 max-sm:pointer-events-auto ${
+          isTouchDevice || controlsVisible ? "opacity-100" : "opacity-0 pointer-events-none"
+        }`}
+      >
         <button
           onClick={toggleMute}
-          className="text-white hover:text-gray-300 transition-colors"
+          className="text-white hover:text-gray-300 transition-colors p-2 -m-2"
           title={isMuted ? "Unmute" : "Mute"}
         >
-          {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+          {isMuted ? <VolumeX className="w-7 h-7" /> : <Volume2 className="w-7 h-7" />}
         </button>
         <input
           type="range"
@@ -239,15 +295,15 @@ export default function PlayerClient({ whepUrl }: Props) {
           step={0.01}
           value={isMuted ? 0 : volume}
           onChange={handleVolumeChange}
-          className="w-20 h-1 accent-white cursor-pointer"
+          className="w-28 h-2 accent-white cursor-pointer"
           title="Volume"
         />
         <button
           onClick={toggleFullscreen}
-          className="text-white hover:text-gray-300 transition-colors"
+          className="text-white hover:text-gray-300 transition-colors p-2 -m-2"
           title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
         >
-          {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
+          {isFullscreen ? <Minimize className="w-7 h-7" /> : <Maximize className="w-7 h-7" />}
         </button>
       </div>
     </div>
