@@ -11,3 +11,5 @@ paths:
   - name: gaming
 
   - name: music
+
+  - name: browser # example for browser panel

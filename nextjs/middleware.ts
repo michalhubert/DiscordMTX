@@ -10,8 +10,11 @@ export default auth((req) => {
   const isAuthApi = req.nextUrl.pathname.startsWith("/api/auth");
   const isDockArea =
     req.nextUrl.pathname.startsWith("/dock") ||
+    req.nextUrl.pathname.startsWith("/stream") ||
     req.nextUrl.pathname.startsWith("/api/mediamtx") ||
-    req.nextUrl.pathname.startsWith("/api/dock");
+    req.nextUrl.pathname.startsWith("/api/dock") ||
+    req.nextUrl.pathname.startsWith("/api/stream") ||
+    req.nextUrl.pathname.startsWith("/api/whip");
   const dockAuthDisabled = process.env.DISABLE_DOCK_AUTH === "true";
 
   if (!isLoggedIn && !isLoginPage && !isAuthApi) {
