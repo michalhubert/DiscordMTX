@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth";
+import { isStreamerAuthorized } from "@/lib/authz";
 import { getAllPathVisibilities, setPathVisibility } from "@/lib/db";
 import { NextRequest } from "next/server";
 
@@ -12,9 +12,7 @@ function json(data: unknown, status = 200) {
 const PATH_NAME_RE = /^[A-Za-z0-9/]{1,64}$/;
 
 export async function GET() {
-  const session = await auth();
-  const role = (session?.user as { role?: string } | undefined)?.role;
-  if (!session?.user || role !== "streamer") {
+  if (!(await isStreamerAuthorized())) {
     return new Response("Unauthorized", { status: 401 });
   }
 
@@ -22,9 +20,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  const role = (session?.user as { role?: string } | undefined)?.role;
-  if (!session?.user || role !== "streamer") {
+  if (!(await isStreamerAuthorized())) {
     return new Response("Unauthorized", { status: 401 });
   }
 

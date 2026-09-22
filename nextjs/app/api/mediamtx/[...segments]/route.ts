@@ -1,13 +1,11 @@
-import { auth } from "@/lib/auth";
+import { isStreamerAuthorized } from "@/lib/authz";
 import { NextRequest } from "next/server";
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ segments: string[] }> }
 ) {
-  const session = await auth();
-  const role = (session?.user as { role?: string } | undefined)?.role;
-  if (!session?.user || role !== "streamer") {
+  if (!(await isStreamerAuthorized())) {
     return new Response("Unauthorized", { status: 401 });
   }
 
