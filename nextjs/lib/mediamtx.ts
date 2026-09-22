@@ -30,8 +30,10 @@ export async function listWebrtcSessions(): Promise<WebrtcSessionItem[]> {
 // their immediate reconnect attempt.
 export async function kickWebrtcSession(id: string): Promise<boolean> {
   try {
-    const res = await fetch(`${mediamtxApiBase()}/v3/webrtcsessions/${encodeURIComponent(id)}`, {
-      method: "DELETE",
+    // MediaMTX's kick endpoint is POST /v3/webrtcsessions/kick/{id}, not
+    // DELETE /v3/webrtcsessions/{id} (which doesn't exist and returns 404).
+    const res = await fetch(`${mediamtxApiBase()}/v3/webrtcsessions/kick/${encodeURIComponent(id)}`, {
+      method: "POST",
     });
     return res.ok;
   } catch {

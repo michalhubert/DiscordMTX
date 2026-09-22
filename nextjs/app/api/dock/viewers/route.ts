@@ -1,6 +1,7 @@
 import { isStreamerAuthorized } from "@/lib/authz";
 import { getViewerIdentity, pruneViewerIdentities } from "@/lib/viewerIdentities";
 import { kickViewerIp } from "@/lib/kickedViewers";
+import { kickWebrtcSession } from "@/lib/mediamtx";
 import { NextRequest } from "next/server";
 
 export async function GET() {
@@ -73,30 +74,16 @@ export async function DELETE(req: NextRequest) {
     kickViewerIp(identity.path, identity.ip);
   }
 
-  const host = process.env.MEDIAMTX_HOST ?? "discordmtx";
-  const apiPort = process.env.MEDIAMTX_API_PORT ?? "9997";
-  const upstream = `http://${host}:${apiPort}/v3/webrtcsessions/${encodeURIComponent(sessionId)}`;
-
-  try {
-    const res = await fetch(upstream, {
-      method: "DELETE",
-    });
-
-    if (!res.ok) {
-      return new Response(await res.text(), {
-        status: res.status,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    return new Response(JSON.stringify({ ok: true }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch {
-    return new Response(JSON.stringify({ error: "MediaMTX API unreachable" }), {
+  const kicked = await kickWebrtcSession(sessionId);
+  if (!kicked) {
+    return new Response(JSON.stringify({ error: "MediaMTX API unreachable or session not found" }), {
       status: 502,
       headers: { "Content-Type": "application/json" },
     });
   }
+
+  return new Response(JSON.stringify({ ok: true }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
 }
