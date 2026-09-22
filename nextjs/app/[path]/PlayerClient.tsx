@@ -11,7 +11,7 @@ import {
   WifiOff,
 } from "lucide-react";
 
-type Status = "connecting" | "connected" | "offline" | "error";
+type Status = "connecting" | "connected" | "offline" | "error" | "kicked";
 
 interface Props {
   whepUrl: string;
@@ -106,6 +106,11 @@ export default function PlayerClient({ whepUrl }: Props) {
         if (!res.ok) {
           if (res.status === 404 || res.status === 503) {
             setStatus("offline");
+          } else if (res.status === 401 || res.status === 403) {
+            // Removed by the streamer (kick) or the viewer password was
+            // rotated - keep retrying (the cooldown/redirect will resolve
+            // itself), but don't claim we're merely "connecting".
+            setStatus("kicked");
           } else {
             setStatus("error");
           }
@@ -174,6 +179,7 @@ export default function PlayerClient({ whepUrl }: Props) {
     connected: "Live",
     offline: "Stream offline",
     error: "Connection error",
+    kicked: "Removed by the streamer",
   };
 
   return (
@@ -227,7 +233,7 @@ function StatusIcon({ status, className }: { status: Status; className?: string 
   if (status === "connecting") {
     return <Loader2 className={`${className ?? ""} animate-spin`} />;
   }
-  if (status === "offline") {
+  if (status === "offline" || status === "kicked") {
     return <WifiOff className={className} />;
   }
   return <AlertTriangle className={className} />;
