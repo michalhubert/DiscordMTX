@@ -1,17 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import {
-  AlertTriangle,
-  Loader2,
-  Maximize,
-  Minimize,
-  Volume2,
-  VolumeX,
-  WifiOff,
-} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import PlayerControls from "./components/PlayerControls";
+import PlayerStatusOverlay from "./components/PlayerStatusOverlay";
+import { useFullscreen } from "./hooks/useFullscreen";
+import { useIsTouchDevice } from "./hooks/useIsTouchDevice";
+import { useWhepPlayer } from "./hooks/useWhepPlayer";
 
-type Status = "connecting" | "connected" | "offline" | "error" | "kicked";
+const CONTROLS_HIDE_DELAY_MS = 3000;
 
 interface Props {
   whepUrl: string;
@@ -19,184 +15,38 @@ interface Props {
 
 export default function PlayerClient({ whepUrl }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const pcRef = useRef<RTCPeerConnection | null>(null);
-  const [status, setStatus] = useState<Status>("connecting");
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const controlsHideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(1);
   const [controlsVisible, setControlsVisible] = useState(true);
-  const [isTouchDevice, setIsTouchDevice] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const controlsHideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const RECONNECT_DELAY_MS = 3000;
-  const CONTROLS_HIDE_DELAY_MS = 3000;
 
-  useEffect(() => {
-    const query = window.matchMedia("(pointer: coarse), (hover: none), (max-width: 768px)");
-    const update = () => setIsTouchDevice(query.matches);
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
+  const isTouchDevice = useIsTouchDevice();
+  const { isFullscreen, toggleFullscreen } = useFullscreen(containerRef, videoRef);
+
+  const handleAutoMuteRequired = useCallback(() => {
+    setIsMuted(true);
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  const { status } = useWhepPlayer({
+    whepUrl,
+    videoRef,
+    onAutoMuteRequired: handleAutoMuteRequired,
+  });
 
-    function scheduleReconnect(delayMs = RECONNECT_DELAY_MS) {
-      if (cancelled) return;
-      if (reconnectTimeout) clearTimeout(reconnectTimeout);
-      reconnectTimeout = setTimeout(() => {
-        if (!cancelled) connect();
-      }, delayMs);
-    }
-
-    async function connect() {
-      if (cancelled) return;
-      setStatus((prev) => (prev === "connected" ? prev : "connecting"));
-
-      pcRef.current?.close();
-      pcRef.current = null;
-
-      try {
-        const pc = new RTCPeerConnection({
-          iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-        });
-        pcRef.current = pc;
-
-        pc.ontrack = (event) => {
-          if (cancelled) return;
-          const video = videoRef.current;
-          if (video && event.streams[0]) {
-            video.srcObject = event.streams[0];
-            video.play().catch(() => {
-              if (cancelled) return;
-              video.muted = true;
-              setIsMuted(true);
-              video.play().catch(() => {});
-            });
-          }
-        };
-
-        pc.onconnectionstatechange = () => {
-          if (cancelled || pcRef.current !== pc) return;
-          const state = pc.connectionState;
-          if (state === "connected") {
-            setStatus("connected");
-          } else if (state === "failed" || state === "closed" || state === "disconnected") {
-            setStatus(state === "disconnected" ? "offline" : "error");
-            scheduleReconnect();
-          }
-        };
-
-        pc.addTransceiver("video", { direction: "recvonly" });
-        pc.addTransceiver("audio", { direction: "recvonly" });
-
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-
-        if (pc.iceGatheringState !== "complete") {
-          await new Promise<void>((resolve) => {
-            const timeout = setTimeout(resolve, 2000);
-            function checkState() {
-              if (pc.iceGatheringState === "complete") {
-                clearTimeout(timeout);
-                pc.removeEventListener("icegatheringstatechange", checkState);
-                resolve();
-              }
-            }
-            pc.addEventListener("icegatheringstatechange", checkState);
-          });
-        }
-
-        const res = await fetch(whepUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/sdp" },
-          body: pc.localDescription?.sdp ?? offer.sdp,
-        });
-
-        if (!res.ok) {
-          if (res.status === 404 || res.status === 503) {
-            setStatus("offline");
-          } else if (res.status === 401) {
-            // Password changed or session invalid -> bounce to login page immediately
-            window.location.href = "/login";
-            return;
-          } else if (res.status === 403) {
-            const text = await res.text().catch(() => "");
-            let kickedUntil: number | null = null;
-            try {
-              const data = JSON.parse(text);
-              if (data?.error === "kicked" && typeof data.kickedUntil === "number") {
-                kickedUntil = data.kickedUntil;
-              }
-            } catch {
-              // Not JSON - fall through to the other 403 cases below.
-            }
-
-            if (kickedUntil !== null) {
-              // Kicked - wait out the real cooldown instead of retrying every RECONNECT_DELAY_MS
-              setStatus("kicked");
-              pc.close();
-              scheduleReconnect(Math.max(kickedUntil - Date.now(), 1000));
-              return;
-            }
-
-            if (text.includes("Access not approved")) {
-              // Access revoked or waiting room needed -> reload so JoinGate handles it
-              window.location.reload();
-              return;
-            }
-            setStatus("error");
-          } else {
-            setStatus("error");
-          }
-          pc.close();
-          scheduleReconnect();
-          return;
-        }
-
-        const sdpAnswer = await res.text();
-        await pc.setRemoteDescription({ type: "answer", sdp: sdpAnswer });
-
-        if (!cancelled && pc.connectionState === "connected") {
-          setStatus("connected");
-        }
-      } catch {
-        if (!cancelled) {
-          setStatus("error");
-          scheduleReconnect();
-        }
-      }
-    }
-
-    connect();
-
-    return () => {
-      cancelled = true;
-      if (reconnectTimeout) clearTimeout(reconnectTimeout);
-      pcRef.current?.close();
-      pcRef.current = null;
-    };
-  }, [whepUrl]);
-
-  function toggleMute() {
-    setIsMuted((prev) => !prev);
-    videoRef.current?.play().catch(() => {});
-  }
-
-  function scheduleControlsHide() {
+  const scheduleControlsHide = useCallback(() => {
     if (isTouchDevice) return;
     if (controlsHideTimeout.current) clearTimeout(controlsHideTimeout.current);
     controlsHideTimeout.current = setTimeout(() => {
       setControlsVisible(false);
     }, CONTROLS_HIDE_DELAY_MS);
-  }
+  }, [isTouchDevice]);
 
-  function showControls() {
+  const showControls = useCallback(() => {
     setControlsVisible(true);
     scheduleControlsHide();
-  }
+  }, [scheduleControlsHide]);
 
   function handleContainerInteraction() {
     if (isTouchDevice) return;
@@ -217,41 +67,38 @@ export default function PlayerClient({ whepUrl }: Props) {
     return () => {
       if (controlsHideTimeout.current) clearTimeout(controlsHideTimeout.current);
     };
-  }, [isTouchDevice]);
+  }, [isTouchDevice, scheduleControlsHide]);
+
+  function toggleMute() {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (isMuted) {
+      setIsMuted(false);
+      video.muted = false;
+      if (volume === 0) {
+        setVolume(1);
+        video.volume = 1;
+      }
+      video.play().catch(() => {});
+    } else {
+      setIsMuted(true);
+      video.muted = true;
+    }
+  }
 
   function handleVolumeChange(e: React.ChangeEvent<HTMLInputElement>) {
     const next = Number(e.target.value);
     setVolume(next);
     setIsMuted(next === 0);
+    if (videoRef.current) {
+      videoRef.current.muted = next === 0;
+    }
   }
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.volume = volume;
   }, [volume]);
-
-  function toggleFullscreen() {
-    if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen();
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen();
-      setIsFullscreen(false);
-    }
-  }
-
-  useEffect(() => {
-    const handler = () => setIsFullscreen(!!document.fullscreenElement);
-    document.addEventListener("fullscreenchange", handler);
-    return () => document.removeEventListener("fullscreenchange", handler);
-  }, []);
-
-  const statusLabels: Record<Status, string> = {
-    connecting: "Connecting…",
-    connected: "Live",
-    offline: "Stream offline",
-    error: "Connection error",
-    kicked: "Removed by the streamer",
-  };
 
   return (
     <div
@@ -268,54 +115,18 @@ export default function PlayerClient({ whepUrl }: Props) {
         className="w-full h-full object-contain"
       />
 
-      {status !== "connected" && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 gap-3">
-          <StatusIcon status={status} className="w-10 h-10 text-gray-300" />
-          <p className="text-white text-lg font-medium">{statusLabels[status]}</p>
-        </div>
-      )}
+      <PlayerStatusOverlay status={status} />
 
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className={`absolute bottom-0 left-0 right-0 flex items-center justify-end gap-4 px-4 py-4 bg-gradient-to-t from-black/70 to-transparent transition-opacity max-sm:opacity-100 max-sm:pointer-events-auto ${
-          isTouchDevice || controlsVisible ? "opacity-100" : "opacity-0 pointer-events-none"
-        }`}
-      >
-        <button
-          onClick={toggleMute}
-          className="text-white hover:text-gray-300 transition-colors p-2 -m-2"
-          title={isMuted ? "Unmute" : "Mute"}
-        >
-          {isMuted ? <VolumeX className="w-7 h-7" /> : <Volume2 className="w-7 h-7" />}
-        </button>
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.01}
-          value={isMuted ? 0 : volume}
-          onChange={handleVolumeChange}
-          className="w-28 h-2 accent-white cursor-pointer"
-          title="Volume"
-        />
-        <button
-          onClick={toggleFullscreen}
-          className="text-white hover:text-gray-300 transition-colors p-2 -m-2"
-          title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-        >
-          {isFullscreen ? <Minimize className="w-7 h-7" /> : <Maximize className="w-7 h-7" />}
-        </button>
-      </div>
+      <PlayerControls
+        visible={controlsVisible}
+        isTouchDevice={isTouchDevice}
+        isMuted={isMuted}
+        volume={volume}
+        isFullscreen={isFullscreen}
+        onToggleMute={toggleMute}
+        onVolumeChange={handleVolumeChange}
+        onToggleFullscreen={toggleFullscreen}
+      />
     </div>
   );
-}
-
-function StatusIcon({ status, className }: { status: Status; className?: string }) {
-  if (status === "connecting") {
-    return <Loader2 className={`${className ?? ""} animate-spin`} />;
-  }
-  if (status === "offline" || status === "kicked") {
-    return <WifiOff className={className} />;
-  }
-  return <AlertTriangle className={className} />;
 }
