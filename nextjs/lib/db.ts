@@ -6,6 +6,7 @@ export type StreamSourceType = "monitor" | "window" | "browser";
 export type StreamVideoCodec = "auto" | "vp9" | "vp8" | "h264" | "av1";
 export type StreamContentHint = "none" | "motion" | "detail" | "text";
 export type StreamDegradationPreference = "balanced" | "maintain-framerate" | "maintain-resolution";
+export type PathVisibility = "public" | "private";
 
 export type StreamSettings = {
   path: string;
@@ -60,6 +61,18 @@ function getDb(): Database.Database {
       data TEXT NOT NULL
     );
   `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS path_visibility (
+      path TEXT PRIMARY KEY,
+      visibility TEXT NOT NULL
+    );
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS viewer_passwords (
+      path TEXT PRIMARY KEY,
+      password TEXT NOT NULL
+    );
+  `);
   return db;
 }
 
@@ -84,4 +97,69 @@ export function saveStreamSettings(settings: StreamSettings): void {
        ON CONFLICT(id) DO UPDATE SET data = excluded.data`
     )
     .run(data);
+}
+
+export function getPathVisibility(path: string): PathVisibility {
+  try {
+    const row = getDb()
+      .prepare("SELECT visibility FROM path_visibility WHERE path = ?")
+      .get(path) as { visibility: string } | undefined;
+    return row?.visibility === "public" ? "public" : "private";
+  } catch (err) {
+    console.error("Failed to read path visibility:", err);
+    return "private";
+  }
+}
+
+export function getAllPathVisibilities(): Record<string, PathVisibility> {
+  try {
+    const rows = getDb()
+      .prepare("SELECT path, visibility FROM path_visibility")
+      .all() as { path: string; visibility: string }[];
+    const result: Record<string, PathVisibility> = {};
+    for (const row of rows) {
+      result[row.path] = row.visibility === "public" ? "public" : "private";
+    }
+    return result;
+  } catch (err) {
+    console.error("Failed to read path visibilities:", err);
+    return {};
+  }
+}
+
+export function setPathVisibility(path: string, visibility: PathVisibility): void {
+  getDb()
+    .prepare(
+      `INSERT INTO path_visibility (path, visibility) VALUES (?, ?)
+       ON CONFLICT(path) DO UPDATE SET visibility = excluded.visibility`
+    )
+    .run(path, visibility);
+}
+
+export function getViewerPassword(path: string): string | null {
+  try {
+    const row = getDb()
+      .prepare("SELECT password FROM viewer_passwords WHERE path = ?")
+      .get(path) as { password: string } | undefined;
+    return row?.password ?? null;
+  } catch (err) {
+    console.error("Failed to read viewer password:", err);
+    return null;
+  }
+}
+
+export function setViewerPassword(path: string, password: string): void {
+  getDb()
+    .prepare(
+      `INSERT INTO viewer_passwords (path, password) VALUES (?, ?)
+       ON CONFLICT(path) DO UPDATE SET password = excluded.password`
+    )
+    .run(path, password);
+}
+
+export function rotateViewerPassword(path: string): string {
+  const crypto = require("crypto");
+  const newPassword = crypto.randomBytes(16).toString("hex");
+  setViewerPassword(path, newPassword);
+  return newPassword;
 }

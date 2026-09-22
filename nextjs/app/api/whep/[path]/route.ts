@@ -1,5 +1,8 @@
 import { auth } from "@/lib/auth";
 import { rememberViewerIdentity } from "@/lib/viewerIdentities";
+import { getClientIp } from "@/lib/net";
+import { getPathVisibility } from "@/lib/db";
+import { isApproved } from "@/lib/accessRequests";
 import { NextRequest } from "next/server";
 
 export async function POST(
@@ -12,6 +15,19 @@ export async function POST(
   }
 
   const { path } = await params;
+  type SessionUser =
+    | { name: string; image: string | null; role: "discord" }
+    | { name: null; image: null; role: "viewer" | "streamer" };
+  const user = session.user as SessionUser;
+
+  // Check if viewer is approved for private streams
+  if (user.role !== "streamer" && getPathVisibility(path) === "private") {
+    const ip = getClientIp(req);
+    if (!isApproved(path, ip)) {
+      return new Response("Access not approved", { status: 403 });
+    }
+  }
+
   const host = process.env.MEDIAMTX_HOST ?? "discordmtx";
   const port = process.env.MEDIAMTX_PORT ?? "8889";
   const upstream = `http://${host}:${port}/${path}/whep`;
@@ -43,12 +59,15 @@ export async function POST(
   // separate WHEP resource identifier and is NOT guaranteed to match it,
   // so we must key off "Id" rather than parsing Location.
   const sessionId = res.headers.get("id") || location?.split("/").filter(Boolean).pop();
-  const user = session.user as { name?: string | null; image?: string | null; role?: string };
   if (res.ok && sessionId) {
+    const ip = getClientIp(req);
     rememberViewerIdentity(sessionId, {
-      name: user.role === "discord" ? user.name || "Guest" : "Guest",
-      image: user.role === "discord" ? user.image ?? null : null,
+      // Discord viewers show their real name/avatar; everyone else (viewer-password) is
+      // identified by IP address instead, since there's no per-person account for them.
+      name: user.role === "discord" ? user.name : ip,
+      image: user.role === "discord" ? user.image : null,
       role: user.role,
+      ip,
     });
   }
 

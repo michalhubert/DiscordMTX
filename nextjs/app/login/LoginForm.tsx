@@ -3,6 +3,7 @@
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, useState } from "react";
+import { Radio } from "lucide-react";
 
 export default function LoginForm({ discordEnabled }: { discordEnabled: boolean }) {
   const searchParams = useSearchParams();
@@ -32,7 +33,7 @@ export default function LoginForm({ discordEnabled }: { discordEnabled: boolean 
     <div className="min-h-screen bg-gray-950 flex items-center justify-center">
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 w-full max-w-sm shadow-2xl">
         <div className="flex items-center gap-3 mb-8">
-          <span className="text-red-500 text-2xl">🔴</span>
+          <Radio className="w-6 h-6 text-red-500" />
           <h1 className="text-white text-xl font-semibold tracking-tight">
             DiscordMTX{isStreamerMode ? " — Streamer" : ""}
           </h1>

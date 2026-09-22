@@ -2,7 +2,6 @@ import NextAuth from "next-auth";
 import type { NextAuthConfig } from "next-auth";
 import Discord from "next-auth/providers/discord";
 import Credentials from "next-auth/providers/credentials";
-import { readFileSync } from "fs";
 import { authConfig } from "./auth.config";
 
 export const config: NextAuthConfig = {
@@ -28,7 +27,7 @@ export const config: NextAuthConfig = {
         ]
       : []),
 
-    // Per-stream viewer password (written by stream-online.sh), for viewers without Discord
+    // Per-stream viewer password (stored in DB per path), for viewers without Discord
     Credentials({
       id: "viewer-password",
       name: "Viewer Password",
@@ -36,14 +35,10 @@ export const config: NextAuthConfig = {
         password: { label: "Password", type: "password" },
       },
       async authorize({ password }) {
-        let token: string;
-        try {
-          token = readFileSync("/auth/viewer-token", "utf8").trim();
-        } catch {
-          return null;
-        }
-        if (!token || password !== token) return null;
-        return { id: "viewer", name: "Viewer", role: "viewer" };
+        const { getViewerPassword } = await import("@/lib/db");
+        const storedPassword = getViewerPassword("default");
+        if (!storedPassword || password !== storedPassword) return null;
+        return { id: "viewer", name: "Viewer", role: "viewer", password: storedPassword };
       },
     }),
 
@@ -68,11 +63,27 @@ export const config: NextAuthConfig = {
 
   callbacks: {
     authorized({ auth }) {
-      return !!auth?.user;
+      if (!auth?.user) return false;
+
+      // For viewer-password users, validate that the stored password matches current password
+      const user = auth.user as { role?: string; password?: string };
+      if (user.role === "viewer" && user.password) {
+        const { getViewerPassword } = require("./db");
+        const currentPassword = getViewerPassword("default");
+        if (currentPassword !== user.password) {
+          return false; // Password changed, invalidate session
+        }
+      }
+
+      return true;
     },
     jwt({ token, user, account }) {
       if (user) {
         token.role = account?.provider === "discord" ? "discord" : (user as { role?: string }).role ?? "viewer";
+        // Store password in JWT for validation
+        if ((user as { password?: string }).password) {
+          token.password = (user as { password?: string }).password;
+        }
       } else if (!token.role) {
         token.role = token.sub === "viewer" ? "viewer" : token.sub === "streamer" ? "streamer" : "discord";
       }
@@ -81,6 +92,7 @@ export const config: NextAuthConfig = {
     session({ session, token }) {
       if (session.user) {
         (session.user as { role?: string }).role = token.role as string | undefined;
+        (session.user as { password?: string }).password = token.password as string | undefined;
       }
       return session;
     },

@@ -30,7 +30,6 @@ export DISCORD_WEBHOOK_URLS="${DISCORD_WEBHOOK_URLS:-}"
 #  - MediaMTX's "streamer" internal user (WHIP publish, from OBS)
 #  - The Next.js /dock (OBS HUD) login, checked directly against this env var
 STREAMER_PASSWORD="${STREAMER_PASSWORD:-discordmtx_streamer_pass}"
-mkdir -p /auth
 
 # MediaMTX natively supports configuration through MTX_<PARAMNAME> environment
 # variables (see https://mediamtx.org/docs/features/configuration), so the

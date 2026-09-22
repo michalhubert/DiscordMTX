@@ -1,4 +1,6 @@
 import { isStreamerAuthorized } from "@/lib/authz";
+import { clearApprovedViewers } from "@/lib/accessRequests";
+import { getPathVisibility } from "@/lib/db";
 import { NextRequest } from "next/server";
 
 function mediamtxBase() {
@@ -28,6 +30,11 @@ export async function POST(
 
   const { path } = await params;
   const upstream = `${mediamtxBase()}/${path}/whip`;
+
+  // Clear approved viewers for private streams when stream starts
+  if (getPathVisibility(path) === "private") {
+    clearApprovedViewers(path);
+  }
 
   const body = await req.text();
   const res = await fetch(upstream, {

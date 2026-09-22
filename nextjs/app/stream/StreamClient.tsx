@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Monitor, Radio, RefreshCw, Save, Square } from "lucide-react";
+import DockClient from "../dock/DockClient";
 
 type SourceType = "monitor" | "window" | "browser";
 type VideoCodec = "auto" | "vp9" | "vp8" | "h264" | "av1";
@@ -237,8 +238,7 @@ export default function StreamClient() {
       noiseSuppression: false,
       autoGainControl: false,
     };
-    // Chrome-only hints: for a window source, ask for audio scoped to that window
-    // only (not full system audio); for a screen, only offer system audio there.
+    // Chrome-only hints: for a window    // only (not full system audio); for a screen, only offer system audio there.
     const displayMediaOptions: DisplayMediaStreamOptions & {
       systemAudio?: "include" | "exclude";
       windowAudio?: "exclude" | "window" | "system";
@@ -479,7 +479,8 @@ export default function StreamClient() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-200 p-6">
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-6 items-start">
+      <div className="max-w-3xl w-full mx-auto lg:mx-0">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
             <Radio className="w-5 h-5 text-red-500" />
@@ -783,6 +784,11 @@ export default function StreamClient() {
             </div>
           )}
         </div>
+      </div>
+
+      <div className="w-full lg:w-[360px] shrink-0 rounded-xl overflow-hidden border border-gray-800">
+        <DockClient />
+      </div>
       </div>
     </div>
   );
