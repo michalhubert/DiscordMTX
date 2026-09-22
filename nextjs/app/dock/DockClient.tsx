@@ -36,6 +36,7 @@ type PendingRequest = {
   path: string;
   name: string | null;
   image: string | null;
+  role?: string;
   requestedAt: number;
 };
 
@@ -75,7 +76,7 @@ export default function DockClient() {
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
   const [busyPath, setBusyPath] = useState<string | null>(null);
   const [busyRequestKey, setBusyRequestKey] = useState<string | null>(null);
-  const [currentPath, setCurrentPath] = useState<string>("default"); // TODO: Umm, what?
+  const [currentPath, setCurrentPath] = useState<string>("");
   const [kickingSessionId, setKickingSessionId] = useState<string | null>(null);
 
   const soundEnabledRef = useRef(soundEnabled);
@@ -184,6 +185,8 @@ export default function DockClient() {
           setStatus("offline");
         }
 
+        if (!cancelled) setCurrentPath(activePublishers[0]?.name ?? "");
+
         const totalPathReaders = paths.reduce((acc, p) => acc + (p.readers ? p.readers.length : 0), 0);
         setViewerCount(Math.max(currentReaders.length, totalPathReaders));
 
@@ -228,6 +231,10 @@ export default function DockClient() {
     let cancelled = false;
 
     async function refreshPassword() {
+      if (!currentPath) {
+        setViewerPassword(null);
+        return;
+      }
       try {
         const res = await fetch(`/api/dock/password?path=${encodeURIComponent(currentPath)}`);
         if (!res.ok) return;
@@ -244,7 +251,7 @@ export default function DockClient() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, []);
+  }, [currentPath]);
 
   // Populates the path list (for visibility toggles) from MediaMTX's configured + runtime paths.
   useEffect(() => {
@@ -345,16 +352,16 @@ export default function DockClient() {
   }
 
   async function approveRequest(req: PendingRequest) {
-    const requestKey = `${req.path}:${req.ip}`;
+    const requestKey = `${req.path}:${req.ip}:${req.role ?? "guest"}`;
     setBusyRequestKey(requestKey);
     try {
       const res = await fetch("/api/streams/pending/approve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: req.path, ip: req.ip }),
+        body: JSON.stringify({ path: req.path, ip: req.ip, role: req.role }),
       });
       if (res.ok) {
-        setPendingRequests((prev) => prev.filter((r) => `${r.path}:${r.ip}` !== requestKey));
+        setPendingRequests((prev) => prev.filter((r) => `${r.path}:${r.ip}:${r.role ?? "guest"}` !== requestKey));
       }
     } catch (err) {
       console.error("Failed to approve join request:", err);
@@ -364,16 +371,16 @@ export default function DockClient() {
   }
 
   async function denyRequest(req: PendingRequest) {
-    const requestKey = `${req.path}:${req.ip}`;
+    const requestKey = `${req.path}:${req.ip}:${req.role ?? "guest"}`;
     setBusyRequestKey(requestKey);
     try {
       const res = await fetch("/api/streams/pending/deny", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: req.path, ip: req.ip }),
+        body: JSON.stringify({ path: req.path, ip: req.ip, role: req.role }),
       });
       if (res.ok) {
-        setPendingRequests((prev) => prev.filter((r) => `${r.path}:${r.ip}` !== requestKey));
+        setPendingRequests((prev) => prev.filter((r) => `${r.path}:${r.ip}:${r.role ?? "guest"}` !== requestKey));
       }
     } catch (err) {
       console.error("Failed to deny join request:", err);
@@ -394,6 +401,7 @@ export default function DockClient() {
   }
 
   async function rotatePassword() {
+    if (!currentPath) return;
     try {
       const res = await fetch(`/api/dock/password?path=${encodeURIComponent(currentPath)}`, { method: "POST" });
       if (!res.ok) return;
@@ -459,17 +467,18 @@ export default function DockClient() {
       </div>
 
       <div className="flex justify-between items-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide my-3">
-        <span>Current Viewer Password</span>
+        <span>Current Viewer Password{currentPath ? ` (/${currentPath})` : ""}</span>
       </div>
       <div className="bg-[#1b1b22] border border-[#2c2c38] rounded-lg px-3 py-2 flex items-center justify-between gap-2 mb-3">
         <span className="font-mono text-sm text-amber-400 truncate">
-          {viewerPassword ?? (status === "live" ? "unavailable" : "no active stream")}
+          {!currentPath ? "no active stream" : viewerPassword ?? "unavailable"}
         </span>
         <div className="flex items-center gap-1 shrink-0">
           <button
             onClick={rotatePassword}
-            title="Rotate viewer password"
-            className="bg-[#2c2c38] border border-[#3a3a48] text-gray-200 px-2 py-1 rounded-md text-[11px] hover:bg-amber-500/30 hover:text-white transition-colors shrink-0"
+            disabled={!currentPath}
+            title="Rotate viewer password for the currently streaming path"
+            className="bg-[#2c2c38] border border-[#3a3a48] text-gray-200 px-2 py-1 rounded-md text-[11px] hover:bg-amber-500/30 hover:text-white transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <RefreshCw className="w-3 h-3" />
           </button>
@@ -542,7 +551,7 @@ export default function DockClient() {
         ) : (
           pendingRequests.map((req) => (
             <li
-              key={`${req.path}:${req.ip}`}
+              key={`${req.path}:${req.ip}:${req.role ?? "guest"}`}
               className="bg-[#1b1b22] border border-[#2c2c38] rounded-md px-2.5 py-2 flex justify-between items-center text-xs gap-2"
             >
               <div className="flex items-center gap-2 min-w-0">
@@ -564,14 +573,14 @@ export default function DockClient() {
               <div className="flex gap-1.5 shrink-0">
                 <button
                   onClick={() => approveRequest(req)}
-                  disabled={busyRequestKey === `${req.path}:${req.ip}`}
+                  disabled={busyRequestKey === `${req.path}:${req.ip}:${req.role ?? "guest"}`}
                   className="bg-green-500/20 text-green-500 px-2 py-1 rounded-md text-[11px] font-semibold hover:bg-green-500/30 transition-colors disabled:opacity-40"
                 >
                   Approve
                 </button>
                 <button
                   onClick={() => denyRequest(req)}
-                  disabled={busyRequestKey === `${req.path}:${req.ip}`}
+                  disabled={busyRequestKey === `${req.path}:${req.ip}:${req.role ?? "guest"}`}
                   className="bg-red-500/20 text-red-500 px-2 py-1 rounded-md text-[11px] font-semibold hover:bg-red-500/30 transition-colors disabled:opacity-40"
                 >
                   Deny

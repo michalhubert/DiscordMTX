@@ -21,11 +21,11 @@ export async function POST(req: NextRequest) {
     return json({ error: "Invalid JSON body" }, 400);
   }
 
-  const { path, ip } = (body ?? {}) as { path?: unknown; ip?: unknown };
+  const { path, ip, role } = (body ?? {}) as { path?: unknown; ip?: unknown; role?: unknown };
   if (typeof path !== "string" || typeof ip !== "string" || !path || !ip) {
     return json({ error: "Missing path or ip" }, 400);
   }
 
-  approveAccess(path, ip);
+  approveAccess(path, ip, typeof role === "string" ? role : undefined);
   return json({ ok: true });
 }

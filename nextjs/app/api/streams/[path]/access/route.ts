@@ -1,7 +1,10 @@
 import { auth } from "@/lib/auth";
 import { getPathVisibility } from "@/lib/db";
 import { requestAccess, getDenialInfo } from "@/lib/accessRequests";
+import { syncStreamState } from "@/lib/streamState";
 import { getClientIp } from "@/lib/net";
+import { getKickInfo } from "@/lib/kickedViewers";
+import { isViewerPasswordStale, type SessionUser } from "@/lib/authz";
 import { NextRequest } from "next/server";
 
 function json(data: unknown, status = 200) {
@@ -23,36 +26,55 @@ export async function GET(
   }
 
   const { path } = await params;
-  type SessionUser =
-    | { name: string; image: string | null; role: "discord" }
-    | { name: null; image: null; role: "viewer" | "streamer" };
   const user = session.user as SessionUser;
 
-  if (user.role === "streamer" || getPathVisibility(path) !== "private") {
-    return json({ status: "approved" });
+  // Bounce to login instead of putting them back in the pending queue once the
+  // streamer rotates the password.
+  if (isViewerPasswordStale(user, path)) {
+    return json({ status: "unauthorized" }, 401);
   }
 
   // Check if there's an active publisher for this path
+  let pathInfo: { ready?: boolean; readyTime?: string } | null = null;
   try {
-    const pathsRes = await fetch("http://discordmtx:9997/v3/paths/list");
+    const host = process.env.MEDIAMTX_HOST ?? "discordmtx";
+    const apiPort = process.env.MEDIAMTX_API_PORT ?? "9997";
+    const pathsRes = await fetch(`http://${host}:${apiPort}/v3/paths/list`, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
     if (pathsRes.ok) {
       const pathsData = await pathsRes.json();
-      const pathInfo = (pathsData.items || []).find((p: any) => p.name === path);
+      pathInfo = (pathsData.items || []).find((p: any) => p.name === path) || null;
+      syncStreamState(path, pathInfo);
       if (!pathInfo || !pathInfo.ready) {
         return json({ status: "offline" });
       }
     }
   } catch (err) {
     console.error("Failed to check path status:", err);
-    // Continue with access request check on error
   }
 
   const ip = getClientIp(req);
+
+  // Just kicked - report it directly instead of falling through to requestAccess()
+  if (user.role !== "streamer") {
+    const kickInfo = getKickInfo(path, ip, user.role);
+    if (kickInfo) {
+      return json({ status: "kicked", kickedUntil: kickInfo.kickedUntil });
+    }
+  }
+
+  if (user.role === "streamer" || getPathVisibility(path) !== "private") {
+    return json({ status: "approved" });
+  }
+
   const status = requestAccess(
     path,
     ip,
     user.role === "discord" ? user.name : null,
-    user.role === "discord" ? user.image : null
+    user.role === "discord" ? user.image : null,
+    user.role
   );
 
   if (status === "denied") {

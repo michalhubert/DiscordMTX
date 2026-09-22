@@ -1,4 +1,5 @@
 import { isStreamerAuthorized } from "@/lib/authz";
+import { syncStreamState } from "@/lib/streamState";
 import { NextRequest } from "next/server";
 
 export async function GET(
@@ -20,6 +21,18 @@ export async function GET(
       cache: "no-store",
     });
     const body = await res.text();
+
+    if (res.ok && segments.join("/") === "paths/list") {
+      try {
+        const data = JSON.parse(body);
+        if (Array.isArray(data.items)) {
+          for (const item of data.items) {
+            if (item.name) syncStreamState(item.name, item);
+          }
+        }
+      } catch {}
+    }
+
     return new Response(body, {
       status: res.status,
       headers: { "Content-Type": "application/json" },
