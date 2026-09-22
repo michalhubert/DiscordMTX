@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { getViewerIdentity, pruneViewerIdentities } from "@/lib/viewerIdentities";
+import { NextRequest } from "next/server";
 
 export async function GET() {
   const session = await auth();
@@ -42,6 +43,48 @@ export async function GET() {
     });
 
     return new Response(JSON.stringify({ ...data, items: merged }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return new Response(JSON.stringify({ error: "MediaMTX API unreachable" }), {
+      status: 502,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  const session = await auth();
+  const role = (session?.user as { role?: string } | undefined)?.role;
+  if (!session?.user || role !== "streamer") {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  const { searchParams } = new URL(req.url);
+  const sessionId = searchParams.get("id");
+
+  if (!sessionId) {
+    return new Response("Missing session ID", { status: 400 });
+  }
+
+  const host = process.env.MEDIAMTX_HOST ?? "discordmtx";
+  const apiPort = process.env.MEDIAMTX_API_PORT ?? "9997";
+  const upstream = `http://${host}:${apiPort}/v3/webrtcsessions/${encodeURIComponent(sessionId)}`;
+
+  try {
+    const res = await fetch(upstream, {
+      method: "DELETE",
+    });
+
+    if (!res.ok) {
+      return new Response(await res.text(), {
+        status: res.status,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    return new Response(JSON.stringify({ ok: true }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });

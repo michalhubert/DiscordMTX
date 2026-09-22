@@ -24,7 +24,7 @@ export type StreamSettings = {
 };
 
 export const DEFAULT_STREAM_SETTINGS: StreamSettings = {
-  path: "browser",
+  path: "",
   sourceType: "monitor",
   fixedResolution: false,
   width: 1920,
@@ -38,8 +38,6 @@ export const DEFAULT_STREAM_SETTINGS: StreamSettings = {
   audioBitrateKbps: 128,
 };
 
-// Fixed on purpose: the SQLite database always lives at this path inside the
-// container, mount /data/sqlite as a volume to persist it (not configurable).
 const DB_PATH = "/data/sqlite/discordmtx.db";
 
 let db: Database.Database | null = null;
@@ -50,7 +48,6 @@ function getDb(): Database.Database {
   try {
     mkdirSync(dirname(DB_PATH), { recursive: true });
   } catch {
-    // ignore, directory may already exist or be unwritable in dev
   }
 
   db = new Database(DB_PATH);
@@ -71,6 +68,24 @@ function getDb(): Database.Database {
     CREATE TABLE IF NOT EXISTS viewer_passwords (
       path TEXT PRIMARY KEY,
       password TEXT NOT NULL
+    );
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS stream_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      path TEXT NOT NULL UNIQUE,
+      started_at INTEGER NOT NULL,
+      resource_id TEXT
+    );
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS denial_records (
+      stream_session_id INTEGER NOT NULL,
+      ip TEXT NOT NULL,
+      denial_count INTEGER NOT NULL DEFAULT 1,
+      denied_until INTEGER NOT NULL,
+      PRIMARY KEY (stream_session_id, ip),
+      FOREIGN KEY (stream_session_id) REFERENCES stream_sessions(id) ON DELETE CASCADE
     );
   `);
   return db;
@@ -162,4 +177,79 @@ export function rotateViewerPassword(path: string): string {
   const newPassword = crypto.randomBytes(16).toString("hex");
   setViewerPassword(path, newPassword);
   return newPassword;
+}
+
+export type DenialRecord = {
+  stream_session_id: number;
+  ip: string;
+  denial_count: number;
+  denied_until: number;
+};
+
+export type StreamSession = {
+  id: number;
+  path: string;
+  started_at: number;
+  resource_id: string | null;
+};
+
+export function getStreamSessionByPath(path: string): StreamSession | null {
+  try {
+    const row = getDb()
+      .prepare("SELECT id, path, started_at, resource_id FROM stream_sessions WHERE path = ?")
+      .get(path) as StreamSession | undefined;
+    return row ?? null;
+  } catch (err) {
+    console.error("Failed to read stream session:", err);
+    return null;
+  }
+}
+
+export function createStreamSession(path: string, resourceId: string | null = null): StreamSession {
+  const now = Date.now();
+  const result = getDb()
+    .prepare("INSERT INTO stream_sessions (path, started_at, resource_id) VALUES (?, ?, ?)")
+    .run(path, now, resourceId);
+  
+  return getStreamSessionByPath(path)!;
+}
+
+export function deleteStreamSession(path: string): void {
+  getDb()
+    .prepare("DELETE FROM stream_sessions WHERE path = ?")
+    .run(path);
+}
+
+export function getDenialRecord(streamSessionId: number, ip: string): DenialRecord | null {
+  try {
+    const row = getDb()
+      .prepare("SELECT stream_session_id, ip, denial_count, denied_until FROM denial_records WHERE stream_session_id = ? AND ip = ?")
+      .get(streamSessionId, ip) as DenialRecord | undefined;
+    return row ?? null;
+  } catch (err) {
+    console.error("Failed to read denial record:", err);
+    return null;
+  }
+}
+
+export function setDenialRecord(streamSessionId: number, ip: string, denialCount: number, deniedUntil: number): void {
+  getDb()
+    .prepare(
+      `INSERT INTO denial_records (stream_session_id, ip, denial_count, denied_until) VALUES (?, ?, ?, ?)
+       ON CONFLICT(stream_session_id, ip) DO UPDATE SET denial_count = excluded.denial_count, denied_until = excluded.denied_until`
+    )
+    .run(streamSessionId, ip, denialCount, deniedUntil);
+}
+
+export function deleteDenialRecord(streamSessionId: number, ip: string): void {
+  getDb()
+    .prepare("DELETE FROM denial_records WHERE stream_session_id = ? AND ip = ?")
+    .run(streamSessionId, ip);
+}
+
+export function pruneExpiredDenialRecords(): void {
+  const now = Date.now();
+  getDb()
+    .prepare("DELETE FROM denial_records WHERE denied_until < ?")
+    .run(now);
 }

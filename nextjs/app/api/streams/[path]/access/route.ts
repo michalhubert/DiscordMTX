@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { getPathVisibility } from "@/lib/db";
-import { requestAccess } from "@/lib/accessRequests";
+import { requestAccess, getDenialInfo } from "@/lib/accessRequests";
 import { getClientIp } from "@/lib/net";
 import { NextRequest } from "next/server";
 
@@ -32,6 +32,21 @@ export async function GET(
     return json({ status: "approved" });
   }
 
+  // Check if there's an active publisher for this path
+  try {
+    const pathsRes = await fetch("http://discordmtx:9997/v3/paths/list");
+    if (pathsRes.ok) {
+      const pathsData = await pathsRes.json();
+      const pathInfo = (pathsData.items || []).find((p: any) => p.name === path);
+      if (!pathInfo || !pathInfo.ready) {
+        return json({ status: "offline" });
+      }
+    }
+  } catch (err) {
+    console.error("Failed to check path status:", err);
+    // Continue with access request check on error
+  }
+
   const ip = getClientIp(req);
   const status = requestAccess(
     path,
@@ -39,5 +54,11 @@ export async function GET(
     user.role === "discord" ? user.name : null,
     user.role === "discord" ? user.image : null
   );
+
+  if (status === "denied") {
+    const denialInfo = getDenialInfo(path, ip);
+    return json({ status: "denied", denialInfo });
+  }
+
   return json({ status });
 }

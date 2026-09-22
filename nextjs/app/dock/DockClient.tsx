@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bell, BellOff, Clock, Globe, HardDrive, Lock, RefreshCw } from "lucide-react";
+import { Bell, BellOff, Clock, Globe, HardDrive, Lock, Loader2, RefreshCw, X } from "lucide-react";
 
 type WebrtcSession = {
   id: string;
@@ -75,7 +75,8 @@ export default function DockClient() {
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
   const [busyPath, setBusyPath] = useState<string | null>(null);
   const [busyRequestKey, setBusyRequestKey] = useState<string | null>(null);
-  const [currentPath, setCurrentPath] = useState<string>("default");
+  const [currentPath, setCurrentPath] = useState<string>("default"); // TODO: Umm, what?
+  const [kickingSessionId, setKickingSessionId] = useState<string | null>(null);
 
   const soundEnabledRef = useRef(soundEnabled);
   soundEnabledRef.current = soundEnabled;
@@ -405,6 +406,23 @@ export default function DockClient() {
     }
   }
 
+  async function kickViewer(sessionId: string, viewerName: string) {
+    setKickingSessionId(sessionId);
+    try {
+      const res = await fetch(`/api/dock/viewers?id=${encodeURIComponent(sessionId)}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        logEvent("leave", "kicked by streamer", viewerName);
+        setReaders((prev) => prev.filter((r) => r.id !== sessionId));
+      }
+    } catch (err) {
+      console.error("Failed to kick viewer:", err);
+    } finally {
+      setKickingSessionId(null);
+    }
+  }
+
   const statusLabel =
     status === "live" ? "LIVE" : status === "error" ? "API ERROR" : status === "offline" ? "OFFLINE" : "Checking";
 
@@ -597,13 +615,23 @@ export default function DockClient() {
                   </span>
                 </div>
               </div>
-              <div className="text-right text-[11px] text-gray-400 flex flex-col gap-0.5">
-                <span className="inline-flex items-center justify-end gap-1">
-                  <Clock className="w-3 h-3" /> {formatDuration(r.created)}
-                </span>
-                <span className="inline-flex items-center justify-end gap-1">
-                  <HardDrive className="w-3 h-3" /> {formatBytes(r.bytesSent)}
-                </span>
+              <div className="flex items-center gap-2">
+                <div className="text-right text-[11px] text-gray-400 flex flex-col gap-0.5">
+                  <span className="inline-flex items-center justify-end gap-1">
+                    <Clock className="w-3 h-3" /> {formatDuration(r.created)}
+                  </span>
+                  <span className="inline-flex items-center justify-end gap-1">
+                    <HardDrive className="w-3 h-3" /> {formatBytes(r.bytesSent)}
+                  </span>
+                </div>
+                <button
+                  onClick={() => kickViewer(r.id, r.viewerName || r.viewerIp || "Guest")}
+                  disabled={kickingSessionId === r.id}
+                  title="Kick this viewer"
+                  className="bg-red-500/20 text-red-500 px-2 py-1 rounded-md text-[11px] font-semibold hover:bg-red-500/30 transition-colors disabled:opacity-40 shrink-0"
+                >
+                  {kickingSessionId === r.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
+                </button>
               </div>
             </li>
           ))

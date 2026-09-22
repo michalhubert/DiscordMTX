@@ -1,6 +1,6 @@
 import { isStreamerAuthorized } from "@/lib/authz";
 import { clearApprovedViewers } from "@/lib/accessRequests";
-import { getPathVisibility } from "@/lib/db";
+import { getPathVisibility, createStreamSession, deleteStreamSession } from "@/lib/db";
 import { NextRequest } from "next/server";
 
 function mediamtxBase() {
@@ -30,6 +30,9 @@ export async function POST(
 
   const { path } = await params;
   const upstream = `${mediamtxBase()}/${path}/whip`;
+
+  // Create stream session record (cascade will handle denial records when deleted)
+  createStreamSession(path);
 
   // Clear approved viewers for private streams when stream starts
   if (getPathVisibility(path) === "private") {
@@ -84,6 +87,9 @@ export async function DELETE(
   }
 
   const upstream = `${mediamtxBase()}/${path}/whip/${resourceId}`;
+
+  // Delete stream session (cascade will automatically delete denial records)
+  deleteStreamSession(path);
 
   try {
     const res = await fetch(upstream, {

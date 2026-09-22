@@ -55,6 +55,8 @@ services:
       NEXT_PUBLIC_DISCORD_ENABLED: ${NEXT_PUBLIC_DISCORD_ENABLED:-false}
       # Set to "true" to disable authentication on /dock and /stream (useful when behind reverse proxy with local-only access)
       DISABLE_DOCK_AUTH: ${DISABLE_DOCK_AUTH:-false}
+      # Denial timeout durations in minutes (comma-separated), e.g. "1,5,15" for 1min, 5min, 15min
+      DENIAL_TIMEOUTS: ${DENIAL_TIMEOUTS:-1,5,15}
 
     volumes:
       - ./config:/data/sqlite # persists the SQLite database (saved /stream settings)

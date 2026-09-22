@@ -1,7 +1,6 @@
-// In-memory join-request queue for private streams, keyed by client IP
-// (not persisted across restarts - same tradeoff as lib/viewerIdentities.ts).
+import { getDenialRecord, setDenialRecord, deleteDenialRecord, pruneExpiredDenialRecords, getStreamSessionByPath } from "./db";
 
-export type AccessStatus = "approved" | "pending";
+export type AccessStatus = "approved" | "pending" | "offline" | "denied";
 
 export type PendingRequest = {
   ip: string;
@@ -12,8 +11,26 @@ export type PendingRequest = {
   lastSeenAt: number;
 };
 
-// Requests not polled by the viewer for this long are dropped (e.g. they closed the tab).
 const STALE_MS = 2 * 60 * 1000;
+
+function getTimeoutDurations(): number[] {
+  const env = process.env.DENIAL_TIMEOUTS;
+  if (!env) return [1, 5, 15].map((m) => m * 60 * 1000);
+  
+  try {
+    const minutes = env.split(",").map((s) => parseInt(s.trim(), 10));
+    if (minutes.some(isNaN) || minutes.length === 0) {
+      console.warn("Invalid DENIAL_TIMEOUTS format, using defaults");
+      return [1, 5, 15].map((m) => m * 60 * 1000);
+    }
+    return minutes.map((m) => m * 60 * 1000);
+  } catch (err) {
+    console.warn("Error parsing DENIAL_TIMEOUTS, using defaults:", err);
+    return [1, 5, 15].map((m) => m * 60 * 1000);
+  }
+}
+
+const TIMEOUT_MS = getTimeoutDurations();
 
 const pendingRequests = new Map<string, PendingRequest>();
 const approvedViewers = new Map<string, Set<string>>();
@@ -27,13 +44,13 @@ function pruneStale() {
   for (const [k, entry] of pendingRequests) {
     if (now - entry.lastSeenAt > STALE_MS) pendingRequests.delete(k);
   }
+  pruneExpiredDenialRecords();
 }
 
 export function isApproved(path: string, ip: string): boolean {
   return approvedViewers.get(path)?.has(ip) ?? false;
 }
 
-// Creates (or refreshes) a pending request for this viewer, unless already approved.
 export function requestAccess(
   path: string,
   ip: string,
@@ -42,8 +59,17 @@ export function requestAccess(
 ): AccessStatus {
   if (isApproved(path, ip)) return "approved";
 
-  const now = Date.now();
   const k = key(path, ip);
+  const now = Date.now();
+
+  const streamSession = getStreamSessionByPath(path);
+  if (streamSession) {
+    const denial = getDenialRecord(streamSession.id, ip);
+    if (denial && now < denial.denied_until) {
+      return "denied";
+    }
+  }
+
   const existing = pendingRequests.get(k);
   if (existing) {
     existing.lastSeenAt = now;
@@ -65,11 +91,27 @@ export function approveAccess(path: string, ip: string): void {
   }
   set.add(ip);
   pendingRequests.delete(key(path, ip));
+  
+  const streamSession = getStreamSessionByPath(path);
+  if (streamSession) {
+    deleteDenialRecord(streamSession.id, ip);
+  }
 }
 
 export function denyAccess(path: string, ip: string): void {
-  pendingRequests.delete(key(path, ip));
+  const k = key(path, ip);
+  pendingRequests.delete(k);
   approvedViewers.get(path)?.delete(ip);
+
+  const streamSession = getStreamSessionByPath(path);
+  if (!streamSession) return;
+
+  const existing = getDenialRecord(streamSession.id, ip);
+  const denialCount = existing ? Math.min(existing.denial_count + 1, TIMEOUT_MS.length) : 1;
+  const timeoutIndex = Math.min(denialCount - 1, TIMEOUT_MS.length - 1);
+  const deniedUntil = Date.now() + TIMEOUT_MS[timeoutIndex];
+
+  setDenialRecord(streamSession.id, ip, denialCount, deniedUntil);
 }
 
 export function listPendingRequests(): PendingRequest[] {
@@ -79,4 +121,18 @@ export function listPendingRequests(): PendingRequest[] {
 
 export function clearApprovedViewers(path: string): void {
   approvedViewers.delete(path);
+}
+
+export function getDenialInfo(path: string, ip: string): { deniedUntil: number; denialCount: number } | null {
+  const streamSession = getStreamSessionByPath(path);
+  if (!streamSession) return null;
+
+  const record = getDenialRecord(streamSession.id, ip);
+  if (!record || Date.now() >= record.denied_until) {
+    return null;
+  }
+  return {
+    deniedUntil: record.denied_until,
+    denialCount: record.denial_count,
+  };
 }

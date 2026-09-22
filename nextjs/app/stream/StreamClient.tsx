@@ -25,7 +25,7 @@ type StreamSettings = {
 };
 
 const DEFAULT_SETTINGS: StreamSettings = {
-  path: "browser",
+  path: "",
   sourceType: "monitor",
   fixedResolution: false,
   width: 1920,
@@ -170,7 +170,14 @@ export default function StreamClient() {
           }
         }
 
-        if (!cancelled) setAvailablePaths(Array.from(names).sort());
+        if (!cancelled) {
+          const sortedPaths = Array.from(names).sort();
+          setAvailablePaths(sortedPaths);
+          // Set first available path as default if current path is empty
+          if (sortedPaths.length > 0 && !settings.path) {
+            setSettings((prev) => ({ ...prev, path: sortedPaths[0] }));
+          }
+        }
       } catch (err) {
         console.error("Failed to load MediaMTX path list:", err);
       }
@@ -178,7 +185,7 @@ export default function StreamClient() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [settings.path]);
 
   const stopStream = useCallback(async () => {
     const pc = pcRef.current;
