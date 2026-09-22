@@ -28,6 +28,11 @@ resolve_webhook_url() {
 # 1. Safely read variables
 WEBHOOK_URL="$(resolve_webhook_url)"
 
+# Notify Next.js app that stream is online so access sessions are initialized cleanly
+curl -s -X POST "http://nextjs:3000/api/streams/hook" \
+  -H "Content-Type: application/json" \
+  -d "{\"path\":\"${STREAM_PATH}\",\"action\":\"ready\"}" >/dev/null 2>&1 || true
+
 # 2. Construct the player URL
 URL="https://${DOMAIN}/${STREAM_PATH}/"
 

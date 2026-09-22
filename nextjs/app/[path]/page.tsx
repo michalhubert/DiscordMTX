@@ -13,19 +13,20 @@ export default async function StreamPage({
     redirect("/login");
   }
 
+  const { path } = await params;
   const user = session.user as { role?: string; password?: string };
 
   // A viewer-password session becomes stale once the streamer rotates the
   // password - bounce back to login instead of rendering the player for a
   // session that the WHEP endpoint will refuse anyway.
   if (user.role === "viewer") {
-    const currentPassword = getViewerPassword("default");
-    if (!currentPassword || user.password !== currentPassword) {
+    const pathPassword = getViewerPassword(path);
+    const defaultPassword = getViewerPassword("default");
+    const validPassword = pathPassword ?? defaultPassword;
+    if (validPassword && user.password !== validPassword) {
       redirect("/login");
     }
   }
-
-  const { path } = await params;
   const whepUrl = `/api/whep/${path}`;
   const isPrivate = getPathVisibility(path) === "private";
   const role = user.role;

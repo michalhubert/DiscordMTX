@@ -27,23 +27,23 @@ export async function POST(
   // session so the client is forced back to the login screen instead of
   // silently reconnecting with the old password.
   if (user.role === "viewer") {
-    const currentPassword = getViewerPassword("default");
-    if (!currentPassword || user.password !== currentPassword) {
+    const pathPassword = getViewerPassword(path);
+    const defaultPassword = getViewerPassword("default");
+    const validPassword = pathPassword ?? defaultPassword;
+    if (validPassword && user.password !== validPassword) {
       return new Response("Viewer password changed", { status: 401 });
     }
   }
 
-  // Recently kicked by the streamer (or just dropped by a password
-  // rotation) - keep refusing reconnect attempts for a short cooldown
-  // instead of letting the player's auto-reconnect loop pop them right
-  // back in.
+  // Recently kicked by the streamer - keep refusing reconnect attempts for a short cooldown
+  // instead of letting the player's auto-reconnect loop pop them right back in.
   if (user.role !== "streamer" && isViewerKicked(path, ip)) {
     return new Response("Kicked", { status: 403 });
   }
 
   // Check if viewer is approved for private streams
   if (user.role !== "streamer" && getPathVisibility(path) === "private") {
-    if (!isApproved(path, ip)) {
+    if (!isApproved(path, ip, user.role)) {
       return new Response("Access not approved", { status: 403 });
     }
   }

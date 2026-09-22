@@ -2,7 +2,7 @@ import { isStreamerAuthorized } from "@/lib/authz";
 import { getViewerIdentity, pruneViewerIdentities } from "@/lib/viewerIdentities";
 import { kickViewerIp } from "@/lib/kickedViewers";
 import { kickWebrtcSession } from "@/lib/mediamtx";
-import { clearApprovedViewers } from "@/lib/accessRequests";
+import { revokeApproval } from "@/lib/accessRequests";
 import { NextRequest } from "next/server";
 
 export async function GET() {
@@ -73,10 +73,8 @@ export async function DELETE(req: NextRequest) {
   const identity = getViewerIdentity(sessionId);
   if (identity?.ip && identity.path) {
     kickViewerIp(identity.path, identity.ip);
-    // A kick also invalidates any prior access approval on that path -
-    // otherwise a previously-approved viewer could just reconnect (after
-    // the cooldown) without ever being re-approved.
-    clearApprovedViewers(identity.path);
+    // Revoke access approval for this specific kicked viewer on that path.
+    revokeApproval(identity.path, identity.ip);
   }
 
   const kicked = await kickWebrtcSession(sessionId);

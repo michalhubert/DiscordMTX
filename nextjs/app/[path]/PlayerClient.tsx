@@ -106,10 +106,18 @@ export default function PlayerClient({ whepUrl }: Props) {
         if (!res.ok) {
           if (res.status === 404 || res.status === 503) {
             setStatus("offline");
-          } else if (res.status === 401 || res.status === 403) {
-            // Removed by the streamer (kick) or the viewer password was
-            // rotated - keep retrying (the cooldown/redirect will resolve
-            // itself), but don't claim we're merely "connecting".
+          } else if (res.status === 401) {
+            // Password changed or session invalid -> bounce to login page immediately
+            window.location.href = "/login";
+            return;
+          } else if (res.status === 403) {
+            const text = await res.text().catch(() => "");
+            if (text.includes("Access not approved")) {
+              // Access revoked or waiting room needed -> reload so JoinGate handles it
+              window.location.reload();
+              return;
+            }
+            // Removed by the streamer (kick cooldown)
             setStatus("kicked");
           } else {
             setStatus("error");

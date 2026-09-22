@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { getPathVisibility } from "@/lib/db";
 import { requestAccess, getDenialInfo } from "@/lib/accessRequests";
+import { syncStreamState } from "@/lib/streamState";
 import { getClientIp } from "@/lib/net";
 import { NextRequest } from "next/server";
 
@@ -28,23 +29,29 @@ export async function GET(
     | { name: null; image: null; role: "viewer" | "streamer" };
   const user = session.user as SessionUser;
 
-  if (user.role === "streamer" || getPathVisibility(path) !== "private") {
-    return json({ status: "approved" });
-  }
-
   // Check if there's an active publisher for this path
+  let pathInfo: { ready?: boolean; readyTime?: string } | null = null;
   try {
-    const pathsRes = await fetch("http://discordmtx:9997/v3/paths/list");
+    const host = process.env.MEDIAMTX_HOST ?? "discordmtx";
+    const apiPort = process.env.MEDIAMTX_API_PORT ?? "9997";
+    const pathsRes = await fetch(`http://${host}:${apiPort}/v3/paths/list`, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
     if (pathsRes.ok) {
       const pathsData = await pathsRes.json();
-      const pathInfo = (pathsData.items || []).find((p: any) => p.name === path);
+      pathInfo = (pathsData.items || []).find((p: any) => p.name === path) || null;
+      syncStreamState(path, pathInfo);
       if (!pathInfo || !pathInfo.ready) {
         return json({ status: "offline" });
       }
     }
   } catch (err) {
     console.error("Failed to check path status:", err);
-    // Continue with access request check on error
+  }
+
+  if (user.role === "streamer" || getPathVisibility(path) !== "private") {
+    return json({ status: "approved" });
   }
 
   const ip = getClientIp(req);
@@ -52,7 +59,8 @@ export async function GET(
     path,
     ip,
     user.role === "discord" ? user.name : null,
-    user.role === "discord" ? user.image : null
+    user.role === "discord" ? user.image : null,
+    user.role
   );
 
   if (status === "denied") {

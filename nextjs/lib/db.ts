@@ -163,6 +163,22 @@ export function getViewerPassword(path: string): string | null {
   }
 }
 
+export function getAllViewerPasswords(): Record<string, string> {
+  try {
+    const rows = getDb()
+      .prepare("SELECT path, password FROM viewer_passwords")
+      .all() as Array<{ path: string; password: string }>;
+    const result: Record<string, string> = {};
+    for (const row of rows) {
+      result[row.path] = row.password;
+    }
+    return result;
+  } catch (err) {
+    console.error("Failed to read all viewer passwords:", err);
+    return {};
+  }
+}
+
 export function setViewerPassword(path: string, password: string): void {
   getDb()
     .prepare(

@@ -7,6 +7,7 @@ export type PendingRequest = {
   path: string;
   name: string | null;
   image: string | null;
+  role?: string;
   requestedAt: number;
   lastSeenAt: number;
 };
@@ -33,7 +34,7 @@ function getTimeoutDurations(): number[] {
 const TIMEOUT_MS = getTimeoutDurations();
 
 const pendingRequests = new Map<string, PendingRequest>();
-const approvedViewers = new Map<string, Set<string>>();
+const approvedViewers = new Map<string, Map<string, { role?: string; approvedAt: number }>>();
 
 function key(path: string, ip: string): string {
   return `${path}::${ip}`;
@@ -47,17 +48,23 @@ function pruneStale() {
   pruneExpiredDenialRecords();
 }
 
-export function isApproved(path: string, ip: string): boolean {
-  return approvedViewers.get(path)?.has(ip) ?? false;
+export function isApproved(path: string, ip: string, role?: string): boolean {
+  const map = approvedViewers.get(path);
+  if (!map) return false;
+  const entry = map.get(ip);
+  if (!entry) return false;
+  if (role && entry.role && entry.role !== role) return false;
+  return true;
 }
 
 export function requestAccess(
   path: string,
   ip: string,
   name: string | null,
-  image: string | null
+  image: string | null,
+  role?: string
 ): AccessStatus {
-  if (isApproved(path, ip)) return "approved";
+  if (isApproved(path, ip, role)) return "approved";
 
   const k = key(path, ip);
   const now = Date.now();
@@ -75,21 +82,24 @@ export function requestAccess(
     existing.lastSeenAt = now;
     existing.name = name;
     existing.image = image;
+    existing.role = role ?? existing.role;
   } else {
-    pendingRequests.set(k, { ip, path, name, image, requestedAt: now, lastSeenAt: now });
+    pendingRequests.set(k, { ip, path, name, image, role, requestedAt: now, lastSeenAt: now });
   }
 
   pruneStale();
   return "pending";
 }
 
-export function approveAccess(path: string, ip: string): void {
-  let set = approvedViewers.get(path);
-  if (!set) {
-    set = new Set();
-    approvedViewers.set(path, set);
+export function approveAccess(path: string, ip: string, role?: string): void {
+  const pending = pendingRequests.get(key(path, ip));
+  const effectiveRole = role ?? pending?.role;
+  let map = approvedViewers.get(path);
+  if (!map) {
+    map = new Map();
+    approvedViewers.set(path, map);
   }
-  set.add(ip);
+  map.set(ip, { role: effectiveRole, approvedAt: Date.now() });
   pendingRequests.delete(key(path, ip));
   
   const streamSession = getStreamSessionByPath(path);
@@ -114,6 +124,10 @@ export function denyAccess(path: string, ip: string): void {
   setDenialRecord(streamSession.id, ip, denialCount, deniedUntil);
 }
 
+export function revokeApproval(path: string, ip: string): void {
+  approvedViewers.get(path)?.delete(ip);
+}
+
 export function listPendingRequests(): PendingRequest[] {
   pruneStale();
   return Array.from(pendingRequests.values()).sort((a, b) => a.requestedAt - b.requestedAt);
@@ -121,6 +135,16 @@ export function listPendingRequests(): PendingRequest[] {
 
 export function clearApprovedViewers(path: string): void {
   approvedViewers.delete(path);
+}
+
+export function clearApprovedPasswordViewers(path: string): void {
+  const map = approvedViewers.get(path);
+  if (!map) return;
+  for (const [ip, entry] of Array.from(map.entries())) {
+    if (entry.role === "viewer" || entry.role !== "discord") {
+      map.delete(ip);
+    }
+  }
 }
 
 export function getDenialInfo(path: string, ip: string): { deniedUntil: number; denialCount: number } | null {

@@ -35,10 +35,19 @@ export const config: NextAuthConfig = {
         password: { label: "Password", type: "password" },
       },
       async authorize({ password }) {
-        const { getViewerPassword } = await import("@/lib/db");
+        const { getViewerPassword, getAllViewerPasswords } = await import("@/lib/db");
+        if (typeof password !== "string") return null;
         const storedPassword = getViewerPassword("default");
-        if (!storedPassword || password !== storedPassword) return null;
-        return { id: "viewer", name: "Viewer", role: "viewer", password: storedPassword };
+        if (storedPassword && password === storedPassword) {
+          return { id: "viewer", name: "Viewer", role: "viewer", password: storedPassword };
+        }
+        const all = getAllViewerPasswords();
+        for (const pass of Object.values(all)) {
+          if (password === pass) {
+            return { id: "viewer", name: "Viewer", role: "viewer", password: pass };
+          }
+        }
+        return null;
       },
     }),
 
@@ -68,9 +77,12 @@ export const config: NextAuthConfig = {
       // For viewer-password users, validate that the stored password matches current password
       const user = auth.user as { role?: string; password?: string };
       if (user.role === "viewer" && user.password) {
-        const { getViewerPassword } = require("./db");
-        const currentPassword = getViewerPassword("default");
-        if (currentPassword !== user.password) {
+        const { getViewerPassword, getAllViewerPasswords } = require("./db");
+        const defaultPassword = getViewerPassword("default");
+        const all = getAllViewerPasswords();
+        const allPasswords = new Set<string>(Object.values(all));
+        if (defaultPassword) allPasswords.add(defaultPassword);
+        if (!allPasswords.has(user.password)) {
           return false; // Password changed, invalidate session
         }
       }
