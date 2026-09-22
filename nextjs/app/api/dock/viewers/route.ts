@@ -1,5 +1,6 @@
 import { isStreamerAuthorized } from "@/lib/authz";
 import { getViewerIdentity, pruneViewerIdentities } from "@/lib/viewerIdentities";
+import { kickViewerIp } from "@/lib/kickedViewers";
 import { NextRequest } from "next/server";
 
 export async function GET() {
@@ -62,6 +63,14 @@ export async function DELETE(req: NextRequest) {
 
   if (!sessionId) {
     return new Response("Missing session ID", { status: 400 });
+  }
+
+  // Ban this viewer's IP on their path for a short cooldown so, once MediaMTX
+  // drops the connection below, the player's auto-reconnect loop can't just
+  // open a fresh WHEP session and undo the kick.
+  const identity = getViewerIdentity(sessionId);
+  if (identity?.ip && identity.path) {
+    kickViewerIp(identity.path, identity.ip);
   }
 
   const host = process.env.MEDIAMTX_HOST ?? "discordmtx";
