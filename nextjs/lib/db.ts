@@ -207,10 +207,18 @@ export function getStreamSessionByPath(path: string): StreamSession | null {
 
 export function createStreamSession(path: string, resourceId: string | null = null): StreamSession {
   const now = Date.now();
-  const result = getDb()
-    .prepare("INSERT INTO stream_sessions (path, started_at, resource_id) VALUES (?, ?, ?)")
+  // Upsert instead of plain INSERT: if a previous session for this path was
+  // never cleanly torn down (e.g. the browser tab closed before the WHIP
+  // DELETE fired), a bare INSERT would throw on the UNIQUE(path) constraint
+  // and surface as a 500 on the next stream start. Starting a new session
+  // for the path should always succeed and simply replace the stale row.
+  getDb()
+    .prepare(
+      `INSERT INTO stream_sessions (path, started_at, resource_id) VALUES (?, ?, ?)
+       ON CONFLICT(path) DO UPDATE SET started_at = excluded.started_at, resource_id = excluded.resource_id`
+    )
     .run(path, now, resourceId);
-  
+
   return getStreamSessionByPath(path)!;
 }
 

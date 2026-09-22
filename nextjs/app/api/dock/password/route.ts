@@ -3,6 +3,7 @@ import { getViewerPassword, rotateViewerPassword } from "@/lib/db";
 import { getViewerIdentity } from "@/lib/viewerIdentities";
 import { kickViewerIp } from "@/lib/kickedViewers";
 import { listWebrtcSessions, kickWebrtcSession } from "@/lib/mediamtx";
+import { clearApprovedViewers } from "@/lib/accessRequests";
 import { NextRequest } from "next/server";
 
 export async function GET(req: NextRequest) {
@@ -37,6 +38,11 @@ export async function POST(req: NextRequest) {
     if (identity.ip) kickViewerIp(path, identity.ip);
     await kickWebrtcSession(item.id);
   }
+
+  // A password rotation should also invalidate prior access approvals for
+  // this path, so anyone previously let in under the old password has to
+  // be re-approved once they come back with the new one.
+  clearApprovedViewers(path);
 
   return new Response(JSON.stringify({ password: newPassword }), {
     status: 200,
