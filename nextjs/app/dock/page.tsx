@@ -1,11 +1,9 @@
-import { auth } from "@/lib/auth";
+import { isStreamerAuthorized } from "@/lib/authz";
 import { redirect } from "next/navigation";
 import DockClient from "./DockClient";
 
 export default async function DockPage() {
-  const session = await auth();
-  const role = (session?.user as { role?: string } | undefined)?.role;
-  if (!session?.user || role !== "streamer") {
+  if (!(await isStreamerAuthorized())) {
     redirect("/login?mode=streamer&callbackUrl=/dock");
   }
 

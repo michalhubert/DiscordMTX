@@ -1,11 +1,9 @@
-import { auth } from "@/lib/auth";
+import { isStreamerAuthorized } from "@/lib/authz";
 import { getViewerIdentity, pruneViewerIdentities } from "@/lib/viewerIdentities";
 import { NextRequest } from "next/server";
 
 export async function GET() {
-  const session = await auth();
-  const role = (session?.user as { role?: string } | undefined)?.role;
-  if (!session?.user || role !== "streamer") {
+  if (!(await isStreamerAuthorized())) {
     return new Response("Unauthorized", { status: 401 });
   }
 
@@ -55,9 +53,7 @@ export async function GET() {
 }
 
 export async function DELETE(req: NextRequest) {
-  const session = await auth();
-  const role = (session?.user as { role?: string } | undefined)?.role;
-  if (!session?.user || role !== "streamer") {
+  if (!(await isStreamerAuthorized())) {
     return new Response("Unauthorized", { status: 401 });
   }
 
