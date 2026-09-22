@@ -1,6 +1,6 @@
 import { isStreamerAuthorized } from "@/lib/authz";
 import { clearApprovedViewers } from "@/lib/accessRequests";
-import { getPathVisibility, createStreamSession, deleteStreamSession } from "@/lib/db";
+import { createStreamSession, deleteStreamSession } from "@/lib/db";
 import { NextRequest } from "next/server";
 
 function mediamtxBase() {
@@ -34,10 +34,10 @@ export async function POST(
   // Create stream session record (cascade will handle denial records when deleted)
   createStreamSession(path);
 
-  // Clear approved viewers for private streams when stream starts
-  if (getPathVisibility(path) === "private") {
-    clearApprovedViewers(path);
-  }
+  // A fresh stream is a new "session" for access purposes - previously
+  // approved viewers (public or private) must request/be granted access
+  // again, regardless of the path's current visibility.
+  clearApprovedViewers(path);
 
   const body = await req.text();
   const res = await fetch(upstream, {
@@ -90,6 +90,11 @@ export async function DELETE(
 
   // Delete stream session (cascade will automatically delete denial records)
   deleteStreamSession(path);
+
+  // Once the stream ends, any previously approved viewers must re-request
+  // access on the next stream, instead of the stale approval silently
+  // carrying over.
+  clearApprovedViewers(path);
 
   try {
     const res = await fetch(upstream, {
