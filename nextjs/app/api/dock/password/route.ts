@@ -28,19 +28,23 @@ export async function POST(req: NextRequest) {
   const path = req.nextUrl.searchParams.get("path") || "default";
   const newPassword = rotateViewerPassword(path);
 
-  // The old password is now invalid. Drop live WebRTC sessions for viewer-password
-  // users on this path. Discord OAuth viewers are NOT affected because they do not
-  // authenticate using the viewer password.
+  // The old password is now invalid. Drop live WebRTC sessions for viewer-password users
+  // affected by this rotation - that's viewers on this exact path, plus (when rotating the
+  // "default" password) viewers on any other path that has no override of its own and
+  // therefore was relying on the default password too. Discord OAuth viewers are NOT
+  // affected because they do not authenticate using the viewer password.
   const sessions = await listWebrtcSessions();
   for (const item of sessions) {
     const identity = getViewerIdentity(item.id);
-    if (identity?.role !== "viewer" || (identity.path && identity.path !== path)) continue;
-    if (identity.ip) kickViewerIp(path, identity.ip);
+    if (identity?.role !== "viewer" || !identity.path) continue;
+    const affected = identity.path === path || (path === "default" && !getViewerPassword(identity.path));
+    if (!affected) continue;
+    if (identity.ip) kickViewerIp(identity.path, identity.ip, identity.role);
     await kickWebrtcSession(item.id);
   }
 
-  // Clear ONLY password viewers' approvals for this path.
-  // Discord users remain approved and continue watching!
+  // Clear password viewers' approvals for this rotation (including paths that fall back to
+  // it). Discord users remain approved and continue watching!
   clearApprovedPasswordViewers(path);
 
   return new Response(JSON.stringify({ password: newPassword }), {

@@ -16,12 +16,12 @@ export function syncStreamState(
       clearApprovedViewers(path);
     }
   } else {
-    const readyTime = pathInfo?.readyTime ? new Date(pathInfo.readyTime).getTime() : Date.now();
+    // Restarts are handled by the offline branch above; don't compare readyTime here -
+    // the hook and the poller use different clocks and never agree, which was wiping
+    // approvals right after they got granted.
     const existing = getStreamSessionByPath(path);
     if (!existing) {
-      clearApprovedViewers(path);
-      createStreamSession(path, String(readyTime));
-    } else if (existing.resource_id && pathInfo?.readyTime && existing.resource_id !== String(readyTime)) {
+      const readyTime = pathInfo?.readyTime ? new Date(pathInfo.readyTime).getTime() : Date.now();
       clearApprovedViewers(path);
       createStreamSession(path, String(readyTime));
     }

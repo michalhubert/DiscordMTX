@@ -1,4 +1,5 @@
-import { getDenialRecord, setDenialRecord, deleteDenialRecord, pruneExpiredDenialRecords, getStreamSessionByPath } from "./db";
+import { getDenialRecord, setDenialRecord, deleteDenialRecord, pruneExpiredDenialRecords, getStreamSessionByPath, getViewerPassword } from "./db";
+import { viewerKey as key } from "./viewerKey";
 
 export type AccessStatus = "approved" | "pending" | "offline" | "denied";
 
@@ -36,10 +37,6 @@ const TIMEOUT_MS = getTimeoutDurations();
 const pendingRequests = new Map<string, PendingRequest>();
 const approvedViewers = new Map<string, Map<string, { role?: string; approvedAt: number }>>();
 
-function key(path: string, ip: string): string {
-  return `${path}::${ip}`;
-}
-
 function pruneStale() {
   const now = Date.now();
   for (const [k, entry] of pendingRequests) {
@@ -51,10 +48,8 @@ function pruneStale() {
 export function isApproved(path: string, ip: string, role?: string): boolean {
   const map = approvedViewers.get(path);
   if (!map) return false;
-  const entry = map.get(ip);
-  if (!entry) return false;
-  if (role && entry.role && entry.role !== role) return false;
-  return true;
+  const entry = map.get(key(path, ip, role));
+  return !!entry;
 }
 
 export function requestAccess(
@@ -66,7 +61,7 @@ export function requestAccess(
 ): AccessStatus {
   if (isApproved(path, ip, role)) return "approved";
 
-  const k = key(path, ip);
+  const k = key(path, ip, role);
   const now = Date.now();
 
   const streamSession = getStreamSessionByPath(path);
@@ -82,7 +77,6 @@ export function requestAccess(
     existing.lastSeenAt = now;
     existing.name = name;
     existing.image = image;
-    existing.role = role ?? existing.role;
   } else {
     pendingRequests.set(k, { ip, path, name, image, role, requestedAt: now, lastSeenAt: now });
   }
@@ -92,26 +86,24 @@ export function requestAccess(
 }
 
 export function approveAccess(path: string, ip: string, role?: string): void {
-  const pending = pendingRequests.get(key(path, ip));
-  const effectiveRole = role ?? pending?.role;
   let map = approvedViewers.get(path);
   if (!map) {
     map = new Map();
     approvedViewers.set(path, map);
   }
-  map.set(ip, { role: effectiveRole, approvedAt: Date.now() });
-  pendingRequests.delete(key(path, ip));
-  
+  map.set(key(path, ip, role), { role, approvedAt: Date.now() });
+  pendingRequests.delete(key(path, ip, role));
+
   const streamSession = getStreamSessionByPath(path);
   if (streamSession) {
     deleteDenialRecord(streamSession.id, ip);
   }
 }
 
-export function denyAccess(path: string, ip: string): void {
-  const k = key(path, ip);
+export function denyAccess(path: string, ip: string, role?: string): void {
+  const k = key(path, ip, role);
   pendingRequests.delete(k);
-  approvedViewers.get(path)?.delete(ip);
+  approvedViewers.get(path)?.delete(k);
 
   const streamSession = getStreamSessionByPath(path);
   if (!streamSession) return;
@@ -124,8 +116,8 @@ export function denyAccess(path: string, ip: string): void {
   setDenialRecord(streamSession.id, ip, denialCount, deniedUntil);
 }
 
-export function revokeApproval(path: string, ip: string): void {
-  approvedViewers.get(path)?.delete(ip);
+export function revokeApproval(path: string, ip: string, role?: string): void {
+  approvedViewers.get(path)?.delete(key(path, ip, role));
 }
 
 export function listPendingRequests(): PendingRequest[] {
@@ -137,12 +129,17 @@ export function clearApprovedViewers(path: string): void {
   approvedViewers.delete(path);
 }
 
-export function clearApprovedPasswordViewers(path: string): void {
-  const map = approvedViewers.get(path);
-  if (!map) return;
-  for (const [ip, entry] of Array.from(map.entries())) {
-    if (entry.role === "viewer" || entry.role !== "discord") {
-      map.delete(ip);
+// Rotating the password for `rotatedPath` also invalidates any other path that has no
+// password override of its own and therefore falls back to it - so those paths' password
+// viewers must be cleared too, not just `rotatedPath` itself.
+export function clearApprovedPasswordViewers(rotatedPath: string): void {
+  for (const [path, map] of approvedViewers) {
+    const usesRotatedPassword = path === rotatedPath || (rotatedPath === "default" && !getViewerPassword(path));
+    if (!usesRotatedPassword) continue;
+    for (const [k, entry] of Array.from(map.entries())) {
+      if (entry.role !== "discord") {
+        map.delete(k);
+      }
     }
   }
 }

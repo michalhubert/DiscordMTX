@@ -71,40 +71,17 @@ export const config: NextAuthConfig = {
   },
 
   callbacks: {
-    authorized({ auth }) {
-      if (!auth?.user) return false;
-
-      // For viewer-password users, validate that the stored password matches current password
-      const user = auth.user as { role?: string; password?: string };
-      if (user.role === "viewer" && user.password) {
-        const { getViewerPassword, getAllViewerPasswords } = require("./db");
-        const defaultPassword = getViewerPassword("default");
-        const all = getAllViewerPasswords();
-        const allPasswords = new Set<string>(Object.values(all));
-        if (defaultPassword) allPasswords.add(defaultPassword);
-        if (!allPasswords.has(user.password)) {
-          return false; // Password changed, invalidate session
-        }
-      }
-
-      return true;
-    },
-    jwt({ token, user, account }) {
-      if (user) {
-        token.role = account?.provider === "discord" ? "discord" : (user as { role?: string }).role ?? "viewer";
-        // Store password in JWT for validation
-        if ((user as { password?: string }).password) {
-          token.password = (user as { password?: string }).password;
-        }
-      } else if (!token.role) {
-        token.role = token.sub === "viewer" ? "viewer" : token.sub === "streamer" ? "streamer" : "discord";
-      }
+    async jwt(params) {
+      const token = await authConfig.callbacks!.jwt!(params);
+      if (!token) return token;
+      const password = (params.user as { password?: string } | undefined)?.password;
+      if (password) token.password = password;
       return token;
     },
-    session({ session, token }) {
+    async session(params) {
+      const session = await authConfig.callbacks!.session!(params);
       if (session.user) {
-        (session.user as { role?: string }).role = token.role as string | undefined;
-        (session.user as { password?: string }).password = token.password as string | undefined;
+        (session.user as { password?: string }).password = params.token.password as string | undefined;
       }
       return session;
     },

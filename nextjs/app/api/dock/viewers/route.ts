@@ -72,9 +72,9 @@ export async function DELETE(req: NextRequest) {
   // open a fresh WHEP session and undo the kick.
   const identity = getViewerIdentity(sessionId);
   if (identity?.ip && identity.path) {
-    kickViewerIp(identity.path, identity.ip);
+    kickViewerIp(identity.path, identity.ip, identity.role);
     // Revoke access approval for this specific kicked viewer on that path.
-    revokeApproval(identity.path, identity.ip);
+    revokeApproval(identity.path, identity.ip, identity.role);
   }
 
   const kicked = await kickWebrtcSession(sessionId);

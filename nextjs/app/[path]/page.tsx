@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { getPathVisibility, getViewerPassword } from "@/lib/db";
+import { getPathVisibility } from "@/lib/db";
+import { isViewerPasswordStale, type SessionUser } from "@/lib/authz";
 import JoinGate from "./JoinGate";
 
 export default async function StreamPage({
@@ -14,18 +15,11 @@ export default async function StreamPage({
   }
 
   const { path } = await params;
-  const user = session.user as { role?: string; password?: string };
+  const user = session.user as SessionUser;
 
-  // A viewer-password session becomes stale once the streamer rotates the
-  // password - bounce back to login instead of rendering the player for a
-  // session that the WHEP endpoint will refuse anyway.
-  if (user.role === "viewer") {
-    const pathPassword = getViewerPassword(path);
-    const defaultPassword = getViewerPassword("default");
-    const validPassword = pathPassword ?? defaultPassword;
-    if (validPassword && user.password !== validPassword) {
-      redirect("/login");
-    }
+  // Bounce back to login if the streamer rotated the password since this session was issued.
+  if (isViewerPasswordStale(user, path)) {
+    redirect("/login");
   }
   const whepUrl = `/api/whep/${path}`;
   const isPrivate = getPathVisibility(path) === "private";

@@ -1,9 +1,10 @@
 import { auth } from "@/lib/auth";
 import { rememberViewerIdentity } from "@/lib/viewerIdentities";
 import { getClientIp } from "@/lib/net";
-import { getPathVisibility, getViewerPassword } from "@/lib/db";
+import { getPathVisibility } from "@/lib/db";
 import { isApproved } from "@/lib/accessRequests";
-import { isViewerKicked } from "@/lib/kickedViewers";
+import { getKickInfo } from "@/lib/kickedViewers";
+import { isViewerPasswordStale, type SessionUser } from "@/lib/authz";
 import { NextRequest } from "next/server";
 
 export async function POST(
@@ -16,29 +17,22 @@ export async function POST(
   }
 
   const { path } = await params;
-  type SessionUser =
-    | { name: string; image: string | null; role: "discord" }
-    | { name: null; image: null; role: "viewer" | "streamer"; password?: string };
   const user = session.user as SessionUser;
   const ip = getClientIp(req);
 
-  // A viewer-password session becomes stale as soon as the streamer rotates
-  // the password (see /api/dock/password) - refuse to hand out a new WHEP
-  // session so the client is forced back to the login screen instead of
-  // silently reconnecting with the old password.
-  if (user.role === "viewer") {
-    const pathPassword = getViewerPassword(path);
-    const defaultPassword = getViewerPassword("default");
-    const validPassword = pathPassword ?? defaultPassword;
-    if (validPassword && user.password !== validPassword) {
-      return new Response("Viewer password changed", { status: 401 });
-    }
+  // Refuse to hand out a new WHEP session once the streamer has rotated the password -
+  // the client is forced back to the login screen instead of silently reconnecting.
+  if (isViewerPasswordStale(user, path)) {
+    return new Response("Viewer password changed", { status: 401 });
   }
 
-  // Recently kicked by the streamer - keep refusing reconnect attempts for a short cooldown
-  // instead of letting the player's auto-reconnect loop pop them right back in.
-  if (user.role !== "streamer" && isViewerKicked(path, ip)) {
-    return new Response("Kicked", { status: 403 });
+  // Recently kicked by the streamer - refuse reconnects for the cooldown window
+  const kickInfo = user.role !== "streamer" ? getKickInfo(path, ip, user.role) : null;
+  if (kickInfo) {
+    return new Response(JSON.stringify({ error: "kicked", kickedUntil: kickInfo.kickedUntil }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   // Check if viewer is approved for private streams
