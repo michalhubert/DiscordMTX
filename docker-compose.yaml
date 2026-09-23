@@ -20,8 +20,7 @@ services:
       HOOK_ONLINE_RESTART: ${HOOK_ONLINE_RESTART:-false}
       HOOK_OFFLINE: ${HOOK_OFFLINE:-/hooks/stream-offline.sh}
       # MediaMTX's UDP read buffer size (bytes). MediaMTX docs recommend
-      # raising this (and the host's net.core.rmem_max, see below) to avoid
-      # dropped WebRTC/RTP packets under load.
+      # raising this to avoid dropped WebRTC/RTP packets under load.
       UDP_READ_BUFFER_SIZE: ${UDP_READ_BUFFER_SIZE:-1000000}
 
     volumes:

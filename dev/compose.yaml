@@ -21,6 +21,9 @@ services:
       HOOK_ONLINE: ${HOOK_ONLINE:-/hooks/stream-online.sh}
       HOOK_ONLINE_RESTART: ${HOOK_ONLINE_RESTART:-false}
       HOOK_OFFLINE: ${HOOK_OFFLINE:-/hooks/stream-offline.sh}
+      # MediaMTX's UDP read buffer size (bytes). MediaMTX docs recommend
+      # raising this to avoid dropped WebRTC/RTP packets under load.
+      UDP_READ_BUFFER_SIZE: ${UDP_READ_BUFFER_SIZE:-1000000}
 
     volumes:
       - ../hooks:/opt/hooks:ro # custom hooks if needed
