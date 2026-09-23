@@ -52,6 +52,11 @@ export MTX_WEBRTCTRUSTEDPROXIES="${WEBRTC_TRUSTED_PROXIES:-0.0.0.0/0,::/0}"
 export MTX_APITRUSTEDPROXIES="${API_TRUSTED_PROXIES:-0.0.0.0/0,::/0}"
 export MTX_WEBRTCADDITIONALHOSTS="${WEBRTC_ADDITIONAL_HOSTS:-}"
 
+# Increase the UDP read buffer used by MediaMTX for WebRTC/RTP to reduce
+# packet loss under load, as recommended by the MediaMTX docs. For this to
+# be effective, the host's net.core.rmem_max sysctl must also be raised (see README.md "UDP Buffer Tuning" section)
+export MTX_UDPREADBUFFERSIZE="${UDP_READ_BUFFER_SIZE:-1000000}"
+
 # Add publish/read permissions and hooks for every path defined in $PATHS_FILE.
 COUNT=$(yq eval '.paths | length' "$PATHS_FILE")
 

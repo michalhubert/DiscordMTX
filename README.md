@@ -217,6 +217,19 @@ mediamtx.yml
 
 MediaMTX natively supports configuration through [environment variables](https://mediamtx.org/docs/features/configuration) in the format `MTX_PARAMNAME`. Instead of rendering a full configuration file, `entrypoint.sh` exports the required `MTX_*` variables (derived from the environment and `paths.yml`, if present) and lets MediaMTX apply them on top of `mediamtx.yml` at startup.
 
+### UDP Buffer Tuning (WebRTC packet loss)
+
+MediaMTX's docs note that a too-small UDP receive buffer can cause dropped packets for RTP/WebRTC traffic, especially under load. This stack helps with one half of that automatically, but the other half needs a manual step on the Docker host:
+
+- `entrypoint.sh` exports `MTX_UDPREADBUFFERSIZE` (MediaMTX's own buffer size, in bytes), controlled by the `UDP_READ_BUFFER_SIZE` environment variable (default `1000000`, i.e. MediaMTX's recommended value).
+- For `MTX_UDPREADBUFFERSIZE` to actually take effect, the host's kernel-wide `net.core.rmem_max` sysctl must be raised as well. This is a host-wide (non-namespaced) setting, so it can't be set from inside the container - run this on the Docker host:
+
+```bash
+sudo sysctl -w net.core.rmem_max=100000000
+```
+
+To persist this across reboots, add `net.core.rmem_max=100000000` to `/etc/sysctl.conf` (or a file under `/etc/sysctl.d/`).
+
 ## Hooks
 
 Stream hooks are located in:
