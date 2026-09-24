@@ -89,6 +89,12 @@ function getDb(): Database.Database {
       FOREIGN KEY (stream_session_id) REFERENCES stream_sessions(id) ON DELETE CASCADE
     );
   `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS discord_webhook_messages (
+      path TEXT PRIMARY KEY,
+      message_id TEXT NOT NULL
+    );
+  `);
   return db;
 }
 
@@ -275,4 +281,31 @@ export function pruneExpiredDenialRecords(): void {
   getDb()
     .prepare("DELETE FROM denial_records WHERE denied_until < ?")
     .run(now);
+}
+
+export function getDiscordWebhookMessageId(path: string): string | null {
+  try {
+    const row = getDb()
+      .prepare("SELECT message_id FROM discord_webhook_messages WHERE path = ?")
+      .get(path) as { message_id: string } | undefined;
+    return row?.message_id ?? null;
+  } catch (err) {
+    console.error("Failed to read discord webhook message id:", err);
+    return null;
+  }
+}
+
+export function setDiscordWebhookMessageId(path: string, messageId: string): void {
+  getDb()
+    .prepare(
+      `INSERT INTO discord_webhook_messages (path, message_id) VALUES (?, ?)
+       ON CONFLICT(path) DO UPDATE SET message_id = excluded.message_id`
+    )
+    .run(path, messageId);
+}
+
+export function deleteDiscordWebhookMessageId(path: string): void {
+  getDb()
+    .prepare("DELETE FROM discord_webhook_messages WHERE path = ?")
+    .run(path);
 }

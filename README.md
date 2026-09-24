@@ -16,7 +16,7 @@ FFmpeg transcoding may be added in the future.
 * Next.js frontend with a built-in WebRTC player and login gate
 * "Sign in with Discord" (real Discord OAuth2) for viewers
 * Per-stream, auto-generated viewer password for non-Discord viewers
-* Discord webhooks on stream online/offline events
+* Discord webhook notifications that edit a single message in place for online/offline events, instead of spamming a new message every stream
 * Private streamer HUD / OBS Custom Browser Dock (`/dock`), gated by its own password
 * In-browser desktop/app streaming panel (`/stream`) using WHIP + `getDisplayMedia`, no OBS required
 * Per-stream bitrate/codec/resolution/audio settings, saved to a small SQLite database
@@ -87,7 +87,7 @@ docker compose down
 
 | Variable                  | Description                                       |
 | ------------------------- | -------------------------------------------------- |
-| `DISCORD_WEBHOOK_URL`     | Default Discord webhook used by the stream hooks   |
+| `DISCORD_WEBHOOK_URL`     | Default Discord webhook used for stream online/offline notifications |
 | `DISCORD_WEBHOOK_URLS`    | Optional per-path webhook overrides (see below)    |
 | `PLAYER_DOMAIN`           | Domain used for the generated player URL           |
 | `STREAMER_PASSWORD`       | Password for the MediaMTX `streamer` user, and for the `/dock` OBS HUD |
@@ -112,7 +112,7 @@ By default, every path notifies the same `DISCORD_WEBHOOK_URL`. To send some pat
 DISCORD_WEBHOOK_URLS=desktop:https://discord.com/api/webhooks/...,gaming:https://discord.com/api/webhooks/...
 ```
 
-A path not listed here falls back to `DISCORD_WEBHOOK_URL`. This is resolved by `hooks/stream-online.sh` at runtime, based on the path name (`MTX_PATH`) provided by MediaMTX.
+A path not listed here falls back to `DISCORD_WEBHOOK_URL`. This is resolved by the Next.js app (`lib/discordWebhook.ts`) at runtime, based on the path name reported by the stream hooks.
 
 ### `WEBRTC_ADDITIONAL_HOSTS`
 
@@ -246,11 +246,11 @@ HOOK_ONLINE_RESTART=false
 HOOK_OFFLINE=/hooks/stream-offline.sh
 ```
 
-MediaMTX runs the online hook when the stream starts and the offline hook when it stops.
+MediaMTX runs the online hook when the stream starts and the offline hook when it stops. Both hooks call the Next.js app's `/api/streams/hook` endpoint, which - besides initializing/clearing access sessions - owns the Discord webhook message for that path (`lib/discordWebhook.ts`): it posts one message when the stream first goes online, then edits that same message in place on every subsequent online/offline transition instead of posting a new one each time. The message id is persisted in the SQLite database, so edits keep working across restarts, and if the stored message was deleted manually (or the webhook URL changed), a fresh message is posted and tracked instead.
 
 Viewer passwords are stored per-path in the SQLite database and can be rotated via the streamer dock (/dock). When a password is rotated, all existing viewer sessions are invalidated and viewers must re-login with the new password. The player URL posted to Discord never contains credentials - viewers enter the password on the Next.js login page.
 
-The hook scripts resolve the Discord webhook to use for the current path from the `DISCORD_WEBHOOK_URLS`/`DISCORD_WEBHOOK_URL` environment variables, which they inherit directly from the container.
+The Next.js app resolves the Discord webhook to use for the current path from the `DISCORD_WEBHOOK_URLS`/`DISCORD_WEBHOOK_URL` environment variables (see [Configuration](#configuration)), and builds the player link from `PLAYER_DOMAIN`.
 
 ## Streamer HUD / OBS Custom Browser Dock
 

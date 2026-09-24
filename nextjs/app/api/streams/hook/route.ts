@@ -1,4 +1,5 @@
 import { syncStreamState } from '@/lib/streamState'
+import { syncDiscordWebhookMessage } from '@/lib/discordWebhook'
 import { NextRequest } from 'next/server'
 
 export async function POST(req: NextRequest) {
@@ -11,8 +12,10 @@ export async function POST(req: NextRequest) {
           ready: true,
           readyTime: new Date().toISOString(),
         })
+        await syncDiscordWebhookMessage(path, true)
       } else if (action === 'notReady' || action === 'offline') {
         syncStreamState(path, { ready: false })
+        await syncDiscordWebhookMessage(path, false)
       }
     }
     return new Response(JSON.stringify({ ok: true }), {
