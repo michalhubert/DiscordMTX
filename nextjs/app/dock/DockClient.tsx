@@ -98,6 +98,9 @@ export default function DockClient() {
   const knownSessions = useRef<Map<string, string>>(new Map())
   const initialLoad = useRef(true)
   const audioCtxRef = useRef<AudioContext | null>(null)
+  const prevStatusRef = useRef<'checking' | 'live' | 'offline' | 'error'>(
+    'checking',
+  )
 
   function playChime(isJoin = true) {
     if (!soundEnabledRef.current) return
@@ -135,6 +138,45 @@ export default function DockClient() {
       osc.stop(now + 0.35)
     } catch (e) {
       console.error('Audio chime error:', e)
+    }
+  }
+
+  function playStreamTone(isStart = true) {
+    if (!soundEnabledRef.current) return
+    try {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext: typeof AudioContext })
+            .webkitAudioContext
+        )()
+      }
+      const audioCtx = audioCtxRef.current
+      if (audioCtx.state === 'suspended') audioCtx.resume()
+
+      const now = audioCtx.currentTime
+      const notes = isStart ? [523.25, 783.99] : [783.99, 523.25]
+
+      notes.forEach((freq, i) => {
+        const start = now + i * 0.09
+        const osc = audioCtx.createOscillator()
+        const gain = audioCtx.createGain()
+
+        osc.type = 'sine'
+        osc.frequency.setValueAtTime(freq, start)
+
+        gain.gain.setValueAtTime(0, start)
+        gain.gain.linearRampToValueAtTime(0.14, start + 0.015)
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.18)
+
+        osc.connect(gain)
+        gain.connect(audioCtx.destination)
+
+        osc.start(start)
+        osc.stop(start + 0.18)
+      })
+    } catch (e) {
+      console.error('Audio tone error:', e)
     }
   }
 
@@ -202,15 +244,29 @@ export default function DockClient() {
         )
         const activePublishers = paths.filter((p) => p.ready)
 
+        let newStatus: 'checking' | 'live' | 'offline' | 'error'
         if (hasAuthError) {
-          setStatus('error')
+          newStatus = 'error'
         } else if (hasApiError && paths.length === 0 && sessions.length === 0) {
-          setStatus('error')
+          newStatus = 'error'
         } else if (activePublishers.length > 0) {
-          setStatus('live')
+          newStatus = 'live'
         } else {
-          setStatus('offline')
+          newStatus = 'offline'
         }
+
+        if (!initialLoad.current) {
+          if (newStatus === 'live' && prevStatusRef.current !== 'live') {
+            playStreamTone(true)
+          } else if (
+            newStatus !== 'live' &&
+            prevStatusRef.current === 'live'
+          ) {
+            playStreamTone(false)
+          }
+        }
+        prevStatusRef.current = newStatus
+        setStatus(newStatus)
 
         if (!cancelled) setCurrentPath(activePublishers[0]?.name ?? '')
 
@@ -512,7 +568,7 @@ export default function DockClient() {
         <div className="flex gap-1.5">
           <button
             onClick={() => setSoundEnabled((s) => !s)}
-            title="Toggle audio chime on viewer join"
+            title="Toggle audio chime on viewer join/leave and stream start/end"
             className={`bg-[#1b1b22] border border-[#2c2c38] text-gray-400 px-2 py-1 rounded-md text-[11px] hover:bg-[#2c2c38] hover:text-white transition-colors inline-flex items-center gap-1 ${
               !soundEnabled
                 ? 'bg-indigo-500/20 border-indigo-500 text-indigo-400'
