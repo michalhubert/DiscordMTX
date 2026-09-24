@@ -9,9 +9,6 @@ services:
     user: "1200:1200" # Change to any user that has access to volume files or remove to run as root
 
     environment:
-      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
-      # Optional per-path webhook overrides, e.g. "desktop:https://discord.com/...,gaming:https://discord.com/..."
-      DISCORD_WEBHOOK_URLS: ${DISCORD_WEBHOOK_URLS:-}
       PLAYER_DOMAIN: ${PLAYER_DOMAIN:-}
       STREAMER_PASSWORD: ${STREAMER_PASSWORD:-}
       API_TRUSTED_PROXIES: ${API_TRUSTED_PROXIES:-0.0.0.0/0,::/0}
@@ -52,6 +49,10 @@ services:
       MEDIAMTX_API_PORT: ${MEDIAMTX_API_PORT:-9997}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-changeme-use-a-random-secret}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-}
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+      # Optional per-path webhook overrides, e.g. "desktop:https://discord.com/...,gaming:https://discord.com/..."
+      DISCORD_WEBHOOK_URLS: ${DISCORD_WEBHOOK_URLS:-}
+      PLAYER_DOMAIN: ${PLAYER_DOMAIN:-}
       # Streamer password, also used by MediaMTX's "streamer" WHIP publish user.
       # Grants access to the /dock OBS HUD.
       STREAMER_PASSWORD: ${STREAMER_PASSWORD:-}

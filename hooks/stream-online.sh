@@ -3,58 +3,17 @@ set -eu
 
 STREAM_PATH="${MTX_PATH:-desktop}"
 DOMAIN="${PLAYER_DOMAIN:-localhost}"
+URL="https://${DOMAIN}/${STREAM_PATH}/"
 
-# Resolve the webhook for this path from DISCORD_WEBHOOK_URLS
-# (format: "path1:url1,path2:url2"), falling back to DISCORD_WEBHOOK_URL.
-resolve_webhook_url() {
-  old_ifs="$IFS"
-  IFS=','
-  for entry in ${DISCORD_WEBHOOK_URLS:-}; do
-    IFS="$old_ifs"
-    entry=$(echo "$entry" | xargs)
-    entry_path="${entry%%:*}"
-    entry_url="${entry#*:}"
-    if [ "$entry_path" = "$STREAM_PATH" ] && [ "$entry_url" != "$entry" ]; then
-      echo "$entry_url"
-      return
-    fi
-    IFS=','
-  done
-  IFS="$old_ifs"
-
-  echo "${DISCORD_WEBHOOK_URL:-}"
-}
-
-# 1. Safely read variables
-WEBHOOK_URL="$(resolve_webhook_url)"
-
-# Notify Next.js app that stream is online so access sessions are initialized cleanly
+# Notify Next.js app that the stream is online so it can initialize access
+# sessions cleanly and post/update the Discord "stream online" webhook
+# message (Next.js owns the Discord webhook state, see lib/discordWebhook.ts).
 curl -s -X POST "http://nextjs:3000/api/streams/hook" \
   -H "Content-Type: application/json" \
   -d "{\"path\":\"${STREAM_PATH}\",\"action\":\"ready\"}" >/dev/null 2>&1 || true
 
-# 2. Construct the player URL
-URL="https://${DOMAIN}/${STREAM_PATH}/"
-
-# 3. Decide where to output the URL
-if [ -z "$WEBHOOK_URL" ]; then
-    echo "========================================="
-    echo "STREAM ONLINE! No Discord webhook found."
-    echo "Stream: $STREAM_PATH"
-    echo "Player URL: $URL"
-    echo "========================================="
-else
-    echo "Stream is online. Firing Discord webhook..."
-    if ! RESPONSE="$(curl -fsS \
-      -H 'Content-Type: application/json' \
-      -X POST \
-      --data "{\"content\":\" :red_circle: **STREAM ONLINE**\\nStream: ${STREAM_PATH}\\n${URL}\"}" \
-      "$WEBHOOK_URL" 2>&1)"; then
-        echo "ERROR: Discord webhook failed: $RESPONSE" >&2
-        echo "========================================="
-        echo "STREAM ONLINE! (Discord webhook failed, falling back to console)"
-        echo "Stream: $STREAM_PATH"
-        echo "Player URL: $URL"
-        echo "========================================="
-    fi
-fi
+echo "========================================="
+echo "STREAM ONLINE!"
+echo "Stream: $STREAM_PATH"
+echo "Player URL: $URL"
+echo "========================================="
