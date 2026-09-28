@@ -59,6 +59,10 @@ services:
       # Discord OAuth app credentials (https://discord.com/developers/applications)
       DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
       DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      # Optional Derpibooru filter ID for guest (non-Discord) avatars; empty uses Derpibooru's default filter
+      GUEST_AVATAR_FILTER_ID: ${GUEST_AVATAR_FILTER_ID:-}
+      # Optional extra Derpibooru tags every guest avatar must have, e.g. "cute,smiling" (prefix with - to exclude)
+      GUEST_AVATAR_TAGS: ${GUEST_AVATAR_TAGS:-}
       # Set to "true" to show the "Sign in with Discord" button on the login page
       NEXT_PUBLIC_DISCORD_ENABLED: ${NEXT_PUBLIC_DISCORD_ENABLED:-false}
       # Set to "true" to disable authentication on /dock and /stream (useful when behind reverse proxy with local-only access)

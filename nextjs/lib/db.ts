@@ -90,6 +90,22 @@ function getDb(): Database.Database {
     );
   `);
   db.exec(`
+    CREATE TABLE IF NOT EXISTS guest_identities (
+      path TEXT NOT NULL,
+      ip TEXT NOT NULL,
+      seed TEXT NOT NULL,
+      avatar_url TEXT,
+      avatar_settings TEXT,
+      keep INTEGER NOT NULL DEFAULT 0,
+      stream_session_id INTEGER,
+      PRIMARY KEY (path, ip)
+    );
+  `);
+  const guestColumns = db.pragma("table_info(guest_identities)") as { name: string }[];
+  if (guestColumns.some((c) => c.name === "avatar_ratings")) {
+    db.exec("ALTER TABLE guest_identities RENAME COLUMN avatar_ratings TO avatar_settings");
+  }
+  db.exec(`
     CREATE TABLE IF NOT EXISTS discord_webhook_messages (
       path TEXT PRIMARY KEY,
       message_id TEXT NOT NULL
@@ -308,4 +324,48 @@ export function deleteDiscordWebhookMessageId(path: string): void {
   getDb()
     .prepare("DELETE FROM discord_webhook_messages WHERE path = ?")
     .run(path);
+}
+
+// See lib/guestIdentity.ts.
+export type GuestIdentityRow = {
+  path: string;
+  ip: string;
+  seed: string;
+  avatar_url: string | null;
+  avatar_settings: string | null;
+  keep: number;
+  stream_session_id: number | null;
+};
+
+export function getGuestIdentity(path: string, ip: string): GuestIdentityRow | null {
+  try {
+    const row = getDb()
+      .prepare(
+        "SELECT path, ip, seed, avatar_url, avatar_settings, keep, stream_session_id FROM guest_identities WHERE path = ? AND ip = ?"
+      )
+      .get(path, ip) as GuestIdentityRow | undefined;
+    return row ?? null;
+  } catch (err) {
+    console.error("Failed to read guest identity:", err);
+    return null;
+  }
+}
+
+export function saveGuestIdentity(row: GuestIdentityRow): void {
+  try {
+    getDb()
+      .prepare(
+        `INSERT INTO guest_identities (path, ip, seed, avatar_url, avatar_settings, keep, stream_session_id)
+         VALUES (@path, @ip, @seed, @avatar_url, @avatar_settings, @keep, @stream_session_id)
+         ON CONFLICT(path, ip) DO UPDATE SET
+           seed = excluded.seed,
+           avatar_url = excluded.avatar_url,
+           avatar_settings = excluded.avatar_settings,
+           keep = excluded.keep,
+           stream_session_id = excluded.stream_session_id`
+      )
+      .run(row);
+  } catch (err) {
+    console.error("Failed to save guest identity:", err);
+  }
 }

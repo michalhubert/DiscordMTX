@@ -166,5 +166,5 @@ export default function JoinGate({ path, whepUrl, isPrivate, bypass }: Props) {
     )
   }
 
-  return <PlayerClient whepUrl={whepUrl} />
+  return <PlayerClient path={path} whepUrl={whepUrl} />
 }

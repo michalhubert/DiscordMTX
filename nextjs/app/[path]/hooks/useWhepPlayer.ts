@@ -167,5 +167,5 @@ export function useWhepPlayer({
     }
   }, [whepUrl, videoRef, onAutoMuteRequired])
 
-  return { status }
+  return { status, peerConnectionRef: pcRef }
 }

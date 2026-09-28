@@ -6,6 +6,8 @@ import {
 import { kickViewerIp } from '@/lib/kickedViewers'
 import { kickWebrtcSession } from '@/lib/mediamtx'
 import { revokeApproval } from '@/lib/accessRequests'
+import { disconnectWatchViewer } from '@/lib/watchRoom'
+import { cachedGuestIdentity, ponyKeyFor } from '@/lib/guestIdentity'
 import { NextRequest } from 'next/server'
 
 export async function GET() {
@@ -37,12 +39,27 @@ export async function GET() {
 
     const merged = items.map((item) => {
       const identity = getViewerIdentity(item.id)
+      const ponyKey =
+        identity?.ip && identity.path
+          ? ponyKeyFor(identity.role, identity.name, identity.ip, identity.path)
+          : null
+      // Looked up each time: a pony can change while connected (avatar picked later, reroll).
+      const pony =
+        identity?.path && ponyKey
+          ? cachedGuestIdentity(identity.path, ponyKey)
+          : null
       return {
         ...item,
-        viewerName: identity?.name ?? null,
-        viewerImage: identity?.image ?? null,
+        viewerName: pony?.name ?? identity?.name ?? null,
+        viewerImage: pony ? pony.image : (identity?.image ?? null),
         viewerRole: identity?.role ?? null,
         viewerIp: identity?.ip ?? null,
+        viewerHasPony: !!pony,
+        // The real Discord account behind a pony.
+        viewerDiscordName:
+          pony && identity?.role === 'discord' ? identity.name : null,
+        viewerDiscordImage:
+          pony && identity?.role === 'discord' ? identity.image : null,
       }
     })
 
@@ -78,6 +95,7 @@ export async function DELETE(req: NextRequest) {
     kickViewerIp(identity.path, identity.ip, identity.role)
     // Revoke access approval for this specific kicked viewer on that path.
     revokeApproval(identity.path, identity.ip, identity.role)
+    disconnectWatchViewer(identity.path, identity.ip, identity.role)
   }
 
   const kicked = await kickWebrtcSession(sessionId)
