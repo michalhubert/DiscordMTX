@@ -61,6 +61,10 @@ services:
       DISABLE_DOCK_AUTH: ${DISABLE_DOCK_AUTH:-false}
       # Denial timeout durations in minutes (comma-separated), e.g. "1,5,15" for 1min, 5min, 15min
       DENIAL_TIMEOUTS: ${DENIAL_TIMEOUTS:-1,5,15}
+      # Optional Derpibooru filter ID for guest (non-Discord) avatars; empty uses Derpibooru's default filter
+      GUEST_AVATAR_FILTER_ID: ${GUEST_AVATAR_FILTER_ID:-}
+      # Optional extra Derpibooru tags every guest avatar must have, e.g. "cute,smiling" (prefix with - to exclude)
+      GUEST_AVATAR_TAGS: ${GUEST_AVATAR_TAGS:-}
 
     volumes:
       - ./config:/data/sqlite # persists the SQLite database (saved /stream settings)

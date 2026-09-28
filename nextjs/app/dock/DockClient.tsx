@@ -1,10 +1,12 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import AvatarPreview from '@/app/components/AvatarPreview'
 import {
   Bell,
   BellOff,
   Clock,
+  Dices,
   Globe,
   HardDrive,
   Lock,
@@ -92,6 +94,9 @@ export default function DockClient() {
   const [busyRequestKey, setBusyRequestKey] = useState<string | null>(null)
   const [currentPath, setCurrentPath] = useState<string>('')
   const [kickingSessionId, setKickingSessionId] = useState<string | null>(null)
+  const [rerollingSessionId, setRerollingSessionId] = useState<string | null>(
+    null,
+  )
 
   const soundEnabledRef = useRef(soundEnabled)
   soundEnabledRef.current = soundEnabled
@@ -534,6 +539,26 @@ export default function DockClient() {
     }
   }
 
+  async function rerollAvatar(sessionId: string) {
+    setRerollingSessionId(sessionId)
+    try {
+      const res = await fetch(
+        `/api/dock/viewers/avatar?id=${encodeURIComponent(sessionId)}`,
+        { method: 'POST' },
+      )
+      if (res.ok) {
+        const { image } = await res.json()
+        setReaders((prev) =>
+          prev.map((r) => (r.id === sessionId ? { ...r, viewerImage: image } : r)),
+        )
+      }
+    } catch (err) {
+      console.error('Failed to reroll avatar:', err)
+    } finally {
+      setRerollingSessionId(null)
+    }
+  }
+
   const statusLabel =
     status === 'live'
       ? 'LIVE'
@@ -753,12 +778,19 @@ export default function DockClient() {
             >
               <div className="flex items-center gap-2">
                 {r.viewerImage ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={r.viewerImage}
-                    alt=""
-                    className="w-6 h-6 rounded-full shrink-0"
-                  />
+                  <AvatarPreview
+                    image={r.viewerImage}
+                    name={r.viewerName || r.viewerIp || 'Guest'}
+                    className="flex shrink-0 cursor-zoom-in"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={r.viewerImage}
+                      alt=""
+                      referrerPolicy="no-referrer"
+                      className="w-6 h-6 rounded-full shrink-0 object-cover"
+                    />
+                  </AvatarPreview>
                 ) : (
                   <div className="w-6 h-6 rounded-full bg-[#2c2c38] shrink-0 flex items-center justify-center text-[10px] font-semibold text-gray-400">
                     {(r.viewerName || 'G').charAt(0).toUpperCase()}
@@ -766,11 +798,12 @@ export default function DockClient() {
                 )}
                 <div className="flex flex-col gap-0.5">
                   <span className="font-semibold text-sky-400">
-                    {r.viewerRole === 'discord'
-                      ? r.viewerName || 'Guest'
-                      : r.viewerIp || r.viewerName || 'Guest'}
+                    {r.viewerName || r.viewerIp || 'Guest'}
                   </span>
                   <span className="text-[10px] text-gray-400">
+                    {r.viewerRole !== 'discord' && r.viewerIp && (
+                      <>{r.viewerIp} · </>
+                    )}
                     Path: <strong>{r.path || 'default'}</strong>
                   </span>
                 </div>
@@ -784,6 +817,20 @@ export default function DockClient() {
                     <HardDrive className="w-3 h-3" /> {formatBytes(r.bytesSent)}
                   </span>
                 </div>
+                {r.viewerRole === 'viewer' && (
+                  <button
+                    onClick={() => rerollAvatar(r.id)}
+                    disabled={rerollingSessionId === r.id}
+                    title="Give this guest a different pony picture"
+                    className="bg-sky-500/15 text-sky-400 px-2 py-1 rounded-md text-[11px] font-semibold hover:bg-sky-500/25 transition-colors disabled:opacity-40 shrink-0"
+                  >
+                    {rerollingSessionId === r.id ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Dices className="w-3 h-3" />
+                    )}
+                  </button>
+                )}
                 <button
                   onClick={() =>
                     kickViewer(r.id, r.viewerName || r.viewerIp || 'Guest')

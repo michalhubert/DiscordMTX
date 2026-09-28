@@ -1,23 +1,105 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { ChevronLeft, Maximize, Minimize, Volume2, VolumeX } from 'lucide-react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import {
+  ChevronLeft,
+  Maximize,
+  Minimize,
+  SmilePlus,
+  Users,
+  Volume2,
+  VolumeX,
+} from 'lucide-react'
 import { motion, useDragControls } from 'motion/react'
+import type { ConnectionQuality } from '../hooks/useConnectionStats'
 
 interface Props {
   isMuted: boolean
   isFullscreen: boolean
   onToggleMute: () => void
   onToggleFullscreen: () => void
+  reactionsOpen: boolean
+  onToggleReactions: () => void
+  viewersVisible: boolean
+  viewerCount: number
+  onToggleViewers: () => void
+  quality: ConnectionQuality
 }
 
 const PANEL_WIDTH = 112
+
+const tones = {
+  amber: {
+    button:
+      'border-amber-400/20 bg-amber-500/15 text-amber-300 hover:bg-amber-500/20',
+    icon: 'bg-amber-500/15',
+  },
+  violet: {
+    button:
+      'border-violet-400/20 bg-violet-500/15 text-violet-300 hover:bg-violet-500/20',
+    icon: 'bg-violet-500/15',
+  },
+  red: {
+    button: 'border-red-400/20 bg-red-500/15 text-red-300 hover:bg-red-500/20',
+    icon: 'bg-red-500/15',
+  },
+  sky: {
+    button: 'border-sky-400/20 bg-sky-500/15 text-sky-300 hover:bg-sky-500/20',
+    icon: 'bg-sky-500/15',
+  },
+}
+
+function PanelButton({
+  label,
+  active,
+  tone,
+  onClick,
+  badge,
+  children,
+}: {
+  label: string
+  active: boolean
+  tone: keyof typeof tones
+  onClick: () => void
+  badge?: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      aria-pressed={active}
+      className={`relative flex h-16 w-full items-center justify-center rounded-xl border transition-all active:scale-[0.96] ${
+        active
+          ? tones[tone].button
+          : 'border-white/[0.08] bg-white/[0.06] text-white/80 hover:bg-white/10'
+      }`}
+    >
+      <span
+        className={`flex h-10 w-10 items-center justify-center rounded-lg ${
+          active ? tones[tone].icon : 'bg-white/[0.07]'
+        }`}
+      >
+        {children}
+      </span>
+      {badge}
+    </button>
+  )
+}
 
 export default function MobileEdgePanel({
   isMuted,
   isFullscreen,
   onToggleMute,
   onToggleFullscreen,
+  reactionsOpen,
+  onToggleReactions,
+  viewersVisible,
+  viewerCount,
+  onToggleViewers,
+  quality,
 }: Props) {
   const [isOpen, setIsOpen] = useState(false)
 
@@ -132,6 +214,15 @@ export default function MobileEdgePanel({
               isOpen ? 'rotate-180' : ''
             }`}
           />
+
+          {/* Connection trouble, visible while the drawer is closed */}
+          {quality !== 'good' && (
+            <span
+              className={`absolute top-1.5 h-1.5 w-1.5 rounded-full ${
+                quality === 'poor' ? 'bg-red-400' : 'bg-amber-400'
+              }`}
+            />
+          )}
         </button>
 
         {/* Panel */}
@@ -147,83 +238,66 @@ export default function MobileEdgePanel({
             backdrop-blur-2xl
           "
         >
-          {/* Mute */}
-          <button
-            type="button"
+          <PanelButton
+            label={reactionsOpen ? 'Close reactions' : 'Send a reaction'}
+            active={reactionsOpen}
+            tone="amber"
+            onClick={() => {
+              onToggleReactions()
+              setIsOpen(false)
+            }}
+          >
+            <SmilePlus className="h-5 w-5" />
+          </PanelButton>
+
+          <PanelButton
+            label={viewersVisible ? 'Hide viewers' : 'Show viewers'}
+            active={viewersVisible}
+            tone="violet"
+            onClick={onToggleViewers}
+            badge={
+              viewerCount > 0 && (
+                <span className="absolute right-2 top-2 min-w-4 rounded-full bg-red-500 px-1 text-center text-[10px] font-semibold leading-4 text-white">
+                  {viewerCount}
+                </span>
+              )
+            }
+          >
+            <Users className="h-5 w-5" />
+          </PanelButton>
+
+          <PanelButton
+            label={isMuted ? 'Unmute' : 'Mute'}
+            active={isMuted}
+            tone="red"
             onClick={onToggleMute}
-            aria-label={isMuted ? 'Unmute' : 'Mute'}
-            title={isMuted ? 'Unmute' : 'Mute'}
-            className={`
-              relative
-              flex h-16 w-full
-              items-center justify-center
-              rounded-xl
-              border
-              transition-all
-              active:scale-[0.96]
-              ${
-                isMuted
-                  ? 'border-red-400/20 bg-red-500/15 text-red-300 hover:bg-red-500/20'
-                  : 'border-white/[0.08] bg-white/[0.06] text-white/80 hover:bg-white/10'
-              }
-            `}
+            badge={
+              <span
+                className={`absolute bottom-2 h-1 w-1 rounded-full ${
+                  isMuted ? 'bg-red-400' : 'bg-emerald-400'
+                }`}
+              />
+            }
           >
-            <span
-              className={`
-                flex h-10 w-10 items-center justify-center rounded-lg
-                ${isMuted ? 'bg-red-500/15' : 'bg-white/[0.07]'}
-              `}
-            >
-              {isMuted ? (
-                <VolumeX className="h-5 w-5" />
-              ) : (
-                <Volume2 className="h-5 w-5" />
-              )}
-            </span>
+            {isMuted ? (
+              <VolumeX className="h-5 w-5" />
+            ) : (
+              <Volume2 className="h-5 w-5" />
+            )}
+          </PanelButton>
 
-            {/* tiny state indicator */}
-            <span
-              className={`
-                absolute bottom-2 h-1 w-1 rounded-full
-                ${isMuted ? 'bg-red-400' : 'bg-emerald-400'}
-              `}
-            />
-          </button>
-
-          {/* Fullscreen */}
-          <button
-            type="button"
+          <PanelButton
+            label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+            active={isFullscreen}
+            tone="sky"
             onClick={onToggleFullscreen}
-            aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-            title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-            className={`
-              relative
-              flex h-16 w-full
-              items-center justify-center
-              rounded-xl
-              border
-              transition-all
-              active:scale-[0.96]
-              ${
-                isFullscreen
-                  ? 'border-sky-400/20 bg-sky-500/15 text-sky-300 hover:bg-sky-500/20'
-                  : 'border-white/[0.08] bg-white/[0.06] text-white/80 hover:bg-white/10'
-              }
-            `}
           >
-            <span
-              className={`
-                flex h-10 w-10 items-center justify-center rounded-lg
-                ${isFullscreen ? 'bg-sky-500/15' : 'bg-white/[0.07]'}
-              `}
-            >
-              {isFullscreen ? (
-                <Minimize className="h-5 w-5" />
-              ) : (
-                <Maximize className="h-5 w-5" />
-              )}
-            </span>
-          </button>
+            {isFullscreen ? (
+              <Minimize className="h-5 w-5" />
+            ) : (
+              <Maximize className="h-5 w-5" />
+            )}
+          </PanelButton>
         </div>
       </motion.div>
     </>

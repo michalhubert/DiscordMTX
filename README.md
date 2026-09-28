@@ -20,6 +20,9 @@ FFmpeg transcoding may be added in the future.
 * Private streamer HUD / OBS Custom Browser Dock (`/dock`), gated by its own password
 * In-browser desktop/app streaming panel (`/stream`) using WHIP + `getDisplayMedia`, no OBS required
 * Per-stream bitrate/codec/resolution/audio settings, saved to a small SQLite database
+* Live emoji reactions that float over the player for every viewer (buttons or keys `1`-`8`)
+* Toggleable "who's watching" overlay (button or `V`), with Discord avatars
+* Connection warnings for viewers (packet loss, stalls, high latency, freezes, dropped frames, going offline) plus a signal indicator with live stats
 * Automatic credential generation
 * Docker Compose deployment
 
@@ -61,6 +64,10 @@ NEXTAUTH_URL=https://stream.example.com
 #DISCORD_CLIENT_ID=
 #DISCORD_CLIENT_SECRET=
 #NEXT_PUBLIC_DISCORD_ENABLED=false
+
+# Avatars for guests (non-Discord viewers), see "Guest names and avatars" below
+#GUEST_AVATAR_FILTER_ID=
+#GUEST_AVATAR_TAGS=
 ```
 
 Start the stack:
@@ -103,6 +110,26 @@ docker compose down
 | `DISCORD_CLIENT_SECRET`   | Discord OAuth application client secret            |
 | `NEXT_PUBLIC_DISCORD_ENABLED` | Set to `true` to show the "Sign in with Discord" button on the login page |
 | `DISABLE_DOCK_AUTH`       | Set to `true` to skip authentication on `/dock` and `/stream` (useful when the frontend is only reachable from a trusted/local network) |
+| `GUEST_AVATAR_FILTER_ID`  | Derpibooru filter used for guest avatars (optional, defaults to Derpibooru's default filter), see below |
+| `GUEST_AVATAR_TAGS`       | Extra Derpibooru tags every guest avatar must have (optional), see below |
+
+### Guest names and avatars
+
+Viewers who log in with the stream password (not Discord) get a pony name, e.g. *Fluttershy* or *DJ Pon-3*. The streamer dock shows it next to their IP.
+
+A guest keeps the same pony for the whole stream, including across page refreshes and reconnects, and gets a new one when the next stream starts. Guests who like theirs can click the pin next to their name in the viewer list to keep it for future streams, and click it again to get a new one next time. The streamer can give a guest a different picture of their pony with the 🎲 button in the dock's viewer list. Identities are stored in the SQLite database, so they survive restarts.
+
+Each guest also gets an avatar: a solo picture of their namesake, looked up through the [Derpibooru API](https://derpibooru.org/pages/api). Images are hotlinked from Derpibooru's CDN. Nothing is downloaded; only each guest's chosen image URL is saved with their identity.
+
+Searches use Derpibooru's default filter. To use a different one, set `GUEST_AVATAR_FILTER_ID` to the ID of any [Derpibooru filter](https://derpibooru.org/filters) (the number in the filter's URL).
+
+`GUEST_AVATAR_TAGS` narrows avatars down further: a comma-separated list of [Derpibooru tags](https://derpibooru.org/tags) every avatar must also have. Prefix a tag with `-` to exclude it instead. For example:
+
+```env
+GUEST_AVATAR_TAGS=cute,smiling,-sad
+```
+
+Tags are combined with the guest's pony and the filter. If a pony has no matching pictures, the guest gets a generic pony picture with the same tags instead. Changing either setting re-picks existing avatars that no longer match.
 
 ### `DISCORD_WEBHOOK_URLS`
 
