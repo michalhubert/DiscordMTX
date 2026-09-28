@@ -115,7 +115,7 @@ docker compose down
 
 ### Guest names and avatars
 
-Viewers who log in with the stream password (not Discord) get a pony name, e.g. *Fluttershy* or *DJ Pon-3*. The streamer dock shows it next to their IP.
+Viewers who log in with the stream password get a pony name, e.g. *Fluttershy* or *DJ Pon-3*. On public streams, Discord viewers get one too, so everyone watching is anonymous to each other. The streamer dock shows each pony next to the viewer's IP and, for Discord viewers, their Discord account.
 
 A guest keeps the same pony for the whole stream, including across page refreshes and reconnects, and gets a new one when the next stream starts. Guests who like theirs can click the pin next to their name in the viewer list to keep it for future streams, and click it again to get a new one next time. The streamer can give a guest a different picture of their pony with the 🎲 button in the dock's viewer list. Identities are stored in the SQLite database, so they survive restarts.
 

@@ -26,6 +26,9 @@ type WebrtcSession = {
   viewerImage?: string | null
   viewerRole?: string | null
   viewerIp?: string | null
+  viewerHasPony?: boolean
+  viewerDiscordName?: string | null
+  viewerDiscordImage?: string | null
 }
 
 type MtxPath = {
@@ -800,10 +803,23 @@ export default function DockClient() {
                   <span className="font-semibold text-sky-400">
                     {r.viewerName || r.viewerIp || 'Guest'}
                   </span>
+                  {r.viewerDiscordName && (
+                    <span className="inline-flex items-center gap-1 text-[10px] text-indigo-300">
+                      {r.viewerDiscordImage && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={r.viewerDiscordImage}
+                          alt=""
+                          referrerPolicy="no-referrer"
+                          className="w-3 h-3 rounded-full"
+                        />
+                      )}
+                      Discord: {r.viewerDiscordName}
+                    </span>
+                  )}
                   <span className="text-[10px] text-gray-400">
-                    {r.viewerRole !== 'discord' && r.viewerIp && (
-                      <>{r.viewerIp} · </>
-                    )}
+                    {(r.viewerRole !== 'discord' || r.viewerHasPony) &&
+                      r.viewerIp && <>{r.viewerIp} · </>}
                     Path: <strong>{r.path || 'default'}</strong>
                   </span>
                 </div>
@@ -817,11 +833,11 @@ export default function DockClient() {
                     <HardDrive className="w-3 h-3" /> {formatBytes(r.bytesSent)}
                   </span>
                 </div>
-                {r.viewerRole === 'viewer' && (
+                {r.viewerHasPony && (
                   <button
                     onClick={() => rerollAvatar(r.id)}
                     disabled={rerollingSessionId === r.id}
-                    title="Give this guest a different pony picture"
+                    title="Give this viewer a different pony picture"
                     className="bg-sky-500/15 text-sky-400 px-2 py-1 rounded-md text-[11px] font-semibold hover:bg-sky-500/25 transition-colors disabled:opacity-40 shrink-0"
                   >
                     {rerollingSessionId === r.id ? (

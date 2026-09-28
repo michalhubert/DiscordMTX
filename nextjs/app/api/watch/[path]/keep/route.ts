@@ -1,4 +1,4 @@
-import { setGuestKeep } from '@/lib/guestIdentity'
+import { ponyKeyFor, setGuestKeep } from '@/lib/guestIdentity'
 import { authorizeWatch } from '@/lib/watchAccess'
 import { NextRequest } from 'next/server'
 
@@ -9,8 +9,14 @@ export async function POST(
   const { path } = await params
   const result = await authorizeWatch(req, path)
   if (!result.user) return new Response(null, { status: result.error })
-  if (result.user.role !== 'viewer') {
-    return new Response('Only guests have a pony identity', { status: 400 })
+  const ponyKey = ponyKeyFor(
+    result.user.role,
+    result.user.name,
+    result.ip,
+    path,
+  )
+  if (!ponyKey) {
+    return new Response('No pony identity', { status: 400 })
   }
 
   const body = await req.json().catch(() => null)
@@ -18,6 +24,6 @@ export async function POST(
     return new Response('Expected { keep: boolean }', { status: 400 })
   }
 
-  const identity = setGuestKeep(path, result.ip, body.keep)
+  const identity = setGuestKeep(path, ponyKey, body.keep)
   return Response.json({ kept: identity.kept })
 }

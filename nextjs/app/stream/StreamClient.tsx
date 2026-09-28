@@ -239,6 +239,29 @@ export default function StreamClient() {
     }
   }, [stopStream])
 
+  // Browsers can't fully block leaving: closing still works after their
+  // "Leave site?" prompt. Reload shortcuts are swallowed outright.
+  const isStreaming = status === 'starting' || status === 'live'
+  useEffect(() => {
+    if (!isStreaming) return
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      const reload =
+        e.key === 'F5' ||
+        ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'r')
+      if (reload) e.preventDefault()
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isStreaming])
+
   function buildVideoConstraints(): MediaTrackConstraints {
     const videoConstraints: MediaTrackConstraints & {
       displaySurface?: string

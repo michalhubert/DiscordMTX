@@ -1,9 +1,10 @@
-// Pony names and avatars for viewers without a Discord account ("guests").
+// Pony names and avatars ("guest identities", see ponyKeyFor for who gets one).
 // Avatars are hotlinked from Derpibooru's CDN; only the chosen URL is stored.
-// Identities are per path + IP and last for one stream session, unless kept.
+// Identities are per path + key and last for one stream session, unless kept.
 import { createHash } from 'crypto'
 import {
   getGuestIdentity,
+  getPathVisibility,
   getStreamSessionByPath,
   saveGuestIdentity,
   type GuestIdentityRow,
@@ -150,14 +151,28 @@ async function poolFor(tag: string): Promise<string[]> {
   return urls
 }
 
-function identityKey(path: string, ip: string): string {
-  return `${path}::${ip}`
+// Who gets a pony: password viewers (by IP), and Discord viewers on public
+// streams (by account name). null = shown with their own identity.
+export function ponyKeyFor(
+  role: string | undefined,
+  name: string | null | undefined,
+  ip: string,
+  path: string,
+): string | null {
+  if (role === 'viewer') return ip
+  if (role === 'discord' && name && getPathVisibility(path) === 'public')
+    return `discord:${name}`
+  return null
 }
 
-// The guest's row for the current stream; a fresh one when there's none yet or it
+function identityKey(path: string, key: string): string {
+  return `${path}::${key}`
+}
+
+// The row for the current stream; a fresh one when there's none yet or it
 // belongs to a previous stream and wasn't kept.
-function currentRow(path: string, ip: string): GuestIdentityRow {
-  const row = getGuestIdentity(path, ip)
+function currentRow(path: string, key: string): GuestIdentityRow {
+  const row = getGuestIdentity(path, key)
   const session = getStreamSessionByPath(path)?.id ?? null
   // While offline (no session) keep whatever they had.
   const expired =
@@ -166,9 +181,9 @@ function currentRow(path: string, ip: string): GuestIdentityRow {
 
   const fresh: GuestIdentityRow = {
     path,
-    ip,
+    ip: key,
     // Deterministic, so concurrent first requests produce the same identity.
-    seed: `${ip}:${session ?? 'none'}`,
+    seed: `${key}:${session ?? 'none'}`,
     avatar_url: null,
     avatar_settings: null,
     keep: 0,
@@ -233,9 +248,9 @@ function toIdentity(
 
 export async function guestIdentity(
   path: string,
-  ip: string,
+  key: string,
 ): Promise<GuestIdentity> {
-  const row = currentRow(path, ip)
+  const row = currentRow(path, key)
   const stored = storedAvatar(row)
   if (stored) return toIdentity(row, stored)
   const image = await Promise.race([
@@ -246,8 +261,8 @@ export async function guestIdentity(
 }
 
 // Non-blocking: returns the avatar only if already known, and starts picking one otherwise.
-export function cachedGuestIdentity(path: string, ip: string): GuestIdentity {
-  const row = currentRow(path, ip)
+export function cachedGuestIdentity(path: string, key: string): GuestIdentity {
+  const row = currentRow(path, key)
   const image = storedAvatar(row)
   if (!image) void assignAvatar(row)
   return toIdentity(row, image)
@@ -256,10 +271,10 @@ export function cachedGuestIdentity(path: string, ip: string): GuestIdentity {
 // Kept identities survive future streams; releasing keeps it for the current one.
 export function setGuestKeep(
   path: string,
-  ip: string,
+  key: string,
   keep: boolean,
 ): GuestIdentity {
-  const row = currentRow(path, ip)
+  const row = currentRow(path, key)
   const updated: GuestIdentityRow = {
     ...row,
     keep: keep ? 1 : 0,
@@ -272,11 +287,11 @@ export function setGuestKeep(
 
 export async function rerollGuestAvatar(
   path: string,
-  ip: string,
+  key: string,
 ): Promise<GuestIdentity> {
   // Let a running pick finish first, so it can't overwrite the reroll.
-  await avatarPicks.get(identityKey(path, ip))
-  const row = currentRow(path, ip)
+  await avatarPicks.get(identityKey(path, key))
+  const row = currentRow(path, key)
   const current = storedAvatar(row)
 
   // A fresh random batch rather than the cached pool, so rerolls don't cycle

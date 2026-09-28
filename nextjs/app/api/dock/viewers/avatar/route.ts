@@ -1,10 +1,10 @@
 import { isStreamerAuthorized } from '@/lib/authz'
 import { getViewerIdentity } from '@/lib/viewerIdentities'
-import { rerollGuestAvatar } from '@/lib/guestIdentity'
+import { ponyKeyFor, rerollGuestAvatar } from '@/lib/guestIdentity'
 import { refreshWatchGuest } from '@/lib/watchRoom'
 import { NextRequest } from 'next/server'
 
-// Gives a guest a different picture of their pony.
+// Gives a viewer a different picture of their pony.
 export async function POST(req: NextRequest) {
   if (!(await isStreamerAuthorized())) {
     return new Response('Unauthorized', { status: 401 })
@@ -16,11 +16,15 @@ export async function POST(req: NextRequest) {
   }
 
   const identity = getViewerIdentity(sessionId)
-  if (!identity?.ip || !identity.path || identity.role !== 'viewer') {
-    return new Response('Not a guest viewer', { status: 400 })
+  const ponyKey =
+    identity?.ip && identity.path
+      ? ponyKeyFor(identity.role, identity.name, identity.ip, identity.path)
+      : null
+  if (!identity?.path || !ponyKey) {
+    return new Response('Viewer has no pony identity', { status: 400 })
   }
 
-  const guest = await rerollGuestAvatar(identity.path, identity.ip)
-  await refreshWatchGuest(identity.path, identity.ip)
-  return Response.json({ image: guest.image })
+  const pony = await rerollGuestAvatar(identity.path, ponyKey)
+  await refreshWatchGuest(identity.path, ponyKey)
+  return Response.json({ image: pony.image })
 }

@@ -25,7 +25,7 @@ export async function GET(
   if (!result.user) return new Response(null, { status: result.error })
   const { user, ip } = result
 
-  const { viewer, kept } = await watchViewerFor(user, ip, path)
+  const { viewer, kept, ponyKey } = await watchViewerFor(user, ip, path)
   const connectionId = randomUUID()
   const encoder = new TextEncoder()
   let cleanup = () => {}
@@ -67,6 +67,7 @@ export async function GET(
         viewer,
         ip,
         role: user.role,
+        ponyKey,
         send,
         close: cleanup,
       })
@@ -76,7 +77,7 @@ export async function GET(
       heartbeat = setInterval(() => {
         if (watchAccessDenied(user, path, ip)) return cleanup()
         write(': ping\n\n')
-        if (user.role === 'viewer') void refreshWatchGuest(path, ip)
+        if (ponyKey) void refreshWatchGuest(path, ponyKey)
       }, HEARTBEAT_MS)
 
       req.signal.addEventListener('abort', cleanup)
