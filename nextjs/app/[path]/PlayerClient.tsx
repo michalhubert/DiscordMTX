@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { X } from 'lucide-react'
+import { VolumeX, X } from 'lucide-react'
 import {
   REACTIONS,
   type Reaction,
@@ -28,6 +28,22 @@ import { useWhepPlayer } from './hooks/useWhepPlayer'
 const CONTROLS_HIDE_DELAY_MS = 3000
 const MAX_FLOATING_REACTIONS = 30
 const SHOW_VIEWERS_STORAGE_KEY = 'discordmtx:showViewers'
+const VOLUME_STORAGE_KEY = 'discordmtx:volume'
+const MUTED_STORAGE_KEY = 'discordmtx:muted'
+
+function readStored(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function writeStored(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value)
+  } catch {}
+}
 
 interface Props {
   path: string
@@ -41,6 +57,8 @@ export default function PlayerClient({ path, whepUrl }: Props) {
 
   const [isMuted, setIsMuted] = useState(false)
   const [volume, setVolume] = useState(1)
+  // Muted by the browser's autoplay policy rather than by the viewer.
+  const [autoMuted, setAutoMuted] = useState(false)
   const [controlsVisible, setControlsVisible] = useState(true)
 
   const isTouchDevice = useIsTouchDevice()
@@ -49,9 +67,41 @@ export default function PlayerClient({ path, whepUrl }: Props) {
     videoRef,
   )
 
+  // Restore the viewer's volume before the stream starts playing. Read after
+  // mount, since the server render can't see localStorage.
+  useEffect(() => {
+    const storedVolume = Number(readStored(VOLUME_STORAGE_KEY) ?? NaN)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (storedVolume >= 0 && storedVolume <= 1) setVolume(storedVolume)
+    if (readStored(MUTED_STORAGE_KEY) === 'true') setIsMuted(true)
+  }, [])
+
   const handleAutoMuteRequired = useCallback(() => {
     setIsMuted(true)
+    setAutoMuted(true)
   }, [])
+
+  // Browsers only allow sound after the viewer interacts with the page, so a
+  // refresh starts muted: unmute on their first click or key press.
+  useEffect(() => {
+    if (!autoMuted) return
+    function unmute(e: Event) {
+      // M toggles mute itself.
+      if (e instanceof KeyboardEvent && (e.key === 'm' || e.key === 'M')) return
+      const video = videoRef.current
+      setAutoMuted(false)
+      if (!video) return
+      video.muted = false
+      setIsMuted(false)
+      video.play().catch(() => {})
+    }
+    window.addEventListener('click', unmute, true)
+    window.addEventListener('keydown', unmute, true)
+    return () => {
+      window.removeEventListener('click', unmute, true)
+      window.removeEventListener('keydown', unmute, true)
+    }
+  }, [autoMuted])
 
   const { status, peerConnectionRef } = useWhepPlayer({
     whepUrl,
@@ -188,6 +238,7 @@ export default function PlayerClient({ path, whepUrl }: Props) {
   function toggleMute() {
     const video = videoRef.current
     if (!video) return
+    setAutoMuted(false)
 
     if (isMuted) {
       setIsMuted(false)
@@ -195,21 +246,26 @@ export default function PlayerClient({ path, whepUrl }: Props) {
       if (volume === 0) {
         setVolume(1)
         video.volume = 1
+        writeStored(VOLUME_STORAGE_KEY, '1')
       }
       video.play().catch(() => {})
     } else {
       setIsMuted(true)
       video.muted = true
     }
+    writeStored(MUTED_STORAGE_KEY, String(!isMuted))
   }
 
   function handleVolumeChange(e: React.ChangeEvent<HTMLInputElement>) {
     const next = Number(e.target.value)
+    setAutoMuted(false)
     setVolume(next)
     setIsMuted(next === 0)
     if (videoRef.current) {
       videoRef.current.muted = next === 0
     }
+    writeStored(VOLUME_STORAGE_KEY, String(next))
+    writeStored(MUTED_STORAGE_KEY, String(next === 0))
   }
 
   useEffect(() => {
@@ -254,8 +310,22 @@ export default function PlayerClient({ path, whepUrl }: Props) {
               )}
             </AnimatePresence>
           </div>
-          <div className="order-1 sm:col-start-2 sm:row-start-1">
+          <div className="order-1 flex flex-col items-center gap-2 sm:col-start-2 sm:row-start-1">
             <ConnectionWarnings warnings={warnings} stats={stats} />
+            <AnimatePresence>
+              {autoMuted && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.18 }}
+                  className="flex items-center gap-2 rounded-full border border-white/10 bg-black/60 px-3 py-1.5 text-xs font-medium text-white shadow-xl backdrop-blur-md"
+                >
+                  <VolumeX className="h-3.5 w-3.5" />
+                  {isTouchDevice ? 'Tap' : 'Click'} anywhere to unmute
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       )}
