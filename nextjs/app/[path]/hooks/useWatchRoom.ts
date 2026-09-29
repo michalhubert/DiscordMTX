@@ -3,12 +3,17 @@ import {
   REACTION_RATE_LIMIT,
   type Reaction,
   type WatchEvent,
+  type WatchGuest,
   type WatchReaction,
   type WatchViewer,
 } from '@/lib/watchRoomShared'
 
 const MIN_RETRY_MS = 2000
 const MAX_RETRY_MS = 30000
+
+export type PonyChangeResult =
+  | { ok: true; favoriteTagMatched: boolean | null }
+  | { ok: false; error: string }
 
 export function useWatchRoom(
   path: string,
@@ -17,7 +22,10 @@ export function useWatchRoom(
   const [viewers, setViewers] = useState<WatchViewer[]>([])
   const [self, setSelf] = useState<WatchViewer | null>(null)
   // null for non-guests.
-  const [kept, setKept] = useState<boolean | null>(null)
+  const [guest, setGuest] = useState<WatchGuest | null>(null)
+  // Local time when the guest may reroll (or change their favorite tag) again.
+  const [rerollReadyAt, setRerollReadyAt] = useState(0)
+  const [ponyBusy, setPonyBusy] = useState(false)
   const connectionIdRef = useRef<string | null>(null)
   const sentAtRef = useRef<number[]>([])
   const onReactionRef = useRef(onReaction)
@@ -47,7 +55,8 @@ export function useWatchRoom(
         if (event.type === 'hello') {
           connectionIdRef.current = event.connectionId
           setSelf(event.self)
-          setKept(event.kept)
+          setGuest(event.guest)
+          setRerollReadyAt(Date.now() + (event.guest?.rerollInMs ?? 0))
         } else if (event.type === 'presence') {
           setViewers(event.viewers)
           setSelf(
@@ -107,9 +116,12 @@ export function useWatchRoom(
     [path, self],
   )
 
+  const kept = guest?.kept ?? null
   const toggleKeep = useCallback(async () => {
     if (kept === null) return
     const next = !kept
+    const setKept = (value: boolean) =>
+      setGuest((prev) => prev && { ...prev, kept: value })
     setKept(next)
     try {
       const res = await fetch(`/api/watch/${encodeURIComponent(path)}/keep`, {
@@ -124,11 +136,61 @@ export function useWatchRoom(
     }
   }, [path, kept])
 
+  // The new picture arrives with the next presence event.
+  const changePony = useCallback(
+    async (
+      action: 'avatar' | 'tag',
+      body: object = {},
+    ): Promise<PonyChangeResult> => {
+      setPonyBusy(true)
+      try {
+        const res = await fetch(
+          `/api/watch/${encodeURIComponent(path)}/${action}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          },
+        )
+        if (res.status === 429) {
+          const { rerollInMs } = await res.json()
+          setRerollReadyAt(Date.now() + rerollInMs)
+          return { ok: false, error: 'Wait for the cooldown to end' }
+        }
+        if (!res.ok) {
+          return {
+            ok: false,
+            error: (await res.text()) || `HTTP ${res.status}`,
+          }
+        }
+        const data = await res.json()
+        setRerollReadyAt(Date.now() + data.rerollInMs)
+        setGuest((prev) => prev && { ...prev, favoriteTag: data.favoriteTag })
+        return { ok: true, favoriteTagMatched: data.favoriteTagMatched }
+      } catch {
+        return { ok: false, error: 'Could not reach the server' }
+      } finally {
+        setPonyBusy(false)
+      }
+    },
+    [path],
+  )
+
+  const rerollAvatar = useCallback(() => changePony('avatar'), [changePony])
+  const setFavoriteTag = useCallback(
+    (tag: string | null) => changePony('tag', { tag }),
+    [changePony],
+  )
+
   return {
     viewers,
     self,
-    kept,
+    guest,
     toggleKeep,
+    rerollReadyAt,
+    ponyBusy,
+    rerollAvatar,
+    setFavoriteTag,
     sendReaction,
     canReact: self !== null,
   }

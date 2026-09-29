@@ -25,7 +25,7 @@ export async function GET(
   if (!result.user) return new Response(null, { status: result.error })
   const { user, ip } = result
 
-  const { viewer, kept, ponyKey } = await watchViewerFor(user, ip, path)
+  const { viewer, guest, ponyKey } = await watchViewerFor(user, ip, path)
   const connectionId = randomUUID()
   const encoder = new TextEncoder()
   let cleanup = () => {}
@@ -61,7 +61,7 @@ export async function GET(
 
       // Padding: Safari and some proxies buffer the first ~1KB.
       write(`:${' '.repeat(2048)}\n\nretry: 3000\n\n`)
-      send({ type: 'hello', connectionId, self: viewer, kept })
+      send({ type: 'hello', connectionId, self: viewer, guest })
       joinWatchRoom(path, {
         connectionId,
         viewer,

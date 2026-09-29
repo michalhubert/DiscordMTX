@@ -2,8 +2,8 @@
 // app/api/watch/[path]/route.ts, used for the viewer list and reactions.
 import { createHash } from "crypto";
 import type { SessionUser } from "./authz";
-import { cachedGuestIdentity, guestIdentity, ponyKeyFor } from "./guestIdentity";
-import { REACTION_RATE_LIMIT, type WatchEvent, type WatchViewer } from "./watchRoomShared";
+import { cachedGuestIdentity, guestIdentity, guestRerollWaitMs, ponyKeyFor } from "./guestIdentity";
+import { REACTION_RATE_LIMIT, type WatchEvent, type WatchGuest, type WatchViewer } from "./watchRoomShared";
 
 export type WatchClient = {
   connectionId: string;
@@ -38,21 +38,25 @@ export async function watchViewerFor(
   ip: string,
   path: string,
   { waitForAvatar = true } = {},
-): Promise<{ viewer: WatchViewer; kept: boolean | null; ponyKey: string | null }> {
+): Promise<{ viewer: WatchViewer; guest: WatchGuest | null; ponyKey: string | null }> {
   if (user.role === "streamer") {
     return {
       viewer: { id: shortHash("streamer"), name: "Streamer", image: null, role: "streamer" },
-      kept: null,
+      guest: null,
       ponyKey: null,
     };
   }
   const id = shortHash(user.role === "discord" ? `discord:${user.name}` : `viewer:${ip}`);
   const ponyKey = ponyKeyFor(user.role, user.name, ip, path);
   if (!ponyKey) {
-    return { viewer: { id, name: user.name ?? "Guest", image: user.image, role: user.role }, kept: null, ponyKey };
+    return { viewer: { id, name: user.name ?? "Guest", image: user.image, role: user.role }, guest: null, ponyKey };
   }
   const pony = waitForAvatar ? await guestIdentity(path, ponyKey) : cachedGuestIdentity(path, ponyKey);
-  return { viewer: { id, name: pony.name, image: pony.image, role: user.role }, kept: pony.kept, ponyKey };
+  return {
+    viewer: { id, name: pony.name, image: pony.image, role: user.role },
+    guest: { kept: pony.kept, favoriteTag: pony.favoriteTag, rerollInMs: guestRerollWaitMs(path, ponyKey) },
+    ponyKey,
+  };
 }
 
 function presence(room: Room): WatchViewer[] {
