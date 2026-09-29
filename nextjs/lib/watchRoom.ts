@@ -125,6 +125,16 @@ export function disconnectWatchViewer(path: string, ip: string, role?: string): 
   }
 }
 
+export function disconnectAllWatchViewers(path: string): void {
+  const room = rooms.get(path);
+  if (!room) return;
+  for (const client of Array.from(room.values())) {
+    if (client.role !== "streamer") {
+      client.close();
+    }
+  }
+}
+
 export function allowReaction(viewerId: string): boolean {
   const now = Date.now();
   const recent = (reactionLog.get(viewerId) ?? []).filter((t) => now - t < REACTION_RATE_LIMIT.windowMs);

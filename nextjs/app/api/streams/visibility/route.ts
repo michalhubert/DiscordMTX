@@ -1,5 +1,9 @@
 import { isStreamerAuthorized } from '@/lib/authz'
 import { getAllPathVisibilities, setPathVisibility } from '@/lib/db'
+import { clearApprovedViewers, clearPendingRequests } from '@/lib/accessRequests'
+import { getViewerIdentity } from '@/lib/viewerIdentities'
+import { listWebrtcSessions, kickWebrtcSession } from '@/lib/mediamtx'
+import { disconnectAllWatchViewers } from '@/lib/watchRoom'
 import { NextRequest } from 'next/server'
 
 function json(data: unknown, status = 200) {
@@ -43,5 +47,27 @@ export async function POST(req: NextRequest) {
   }
 
   setPathVisibility(path, visibility)
+
+  if (visibility === 'private') {
+    clearApprovedViewers(path)
+  } else {
+    clearPendingRequests(path)
+  }
+
+  const sessions = await listWebrtcSessions()
+  for (const item of sessions) {
+    const identity = getViewerIdentity(item.id)
+    if (
+      (identity?.path === path || item.path === path) &&
+      identity?.role !== 'streamer' &&
+      item.user !== 'streamer' &&
+      !item.publish
+    ) {
+      await kickWebrtcSession(item.id)
+    }
+  }
+
+  disconnectAllWatchViewers(path)
+
   return json({ path, visibility })
 }
