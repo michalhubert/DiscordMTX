@@ -18,9 +18,9 @@ ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
-# Persistent storage for the SQLite database (stream settings)
+# Persistent storage: config files, and the SQLite database in /data/sqlite
 RUN mkdir -p /data/sqlite && chown -R nextjs:nodejs /data
-VOLUME ["/data/sqlite"]
+VOLUME ["/data"]
 
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./

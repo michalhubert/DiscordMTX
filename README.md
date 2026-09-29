@@ -68,6 +68,7 @@ NEXTAUTH_URL=https://stream.example.com
 # Avatars for guests (non-Discord viewers), see "Guest names and avatars" below
 #GUEST_AVATAR_FILTER_ID=
 #GUEST_AVATAR_TAGS=
+#GUEST_PONY_NAMES_FILE=
 ```
 
 Start the stack:
@@ -112,12 +113,13 @@ docker compose down
 | `DISABLE_DOCK_AUTH`       | Set to `true` to skip authentication on `/dock` and `/stream` (useful when the frontend is only reachable from a trusted/local network) |
 | `GUEST_AVATAR_FILTER_ID`  | Derpibooru filter used for guest avatars (optional, defaults to Derpibooru's default filter), see below |
 | `GUEST_AVATAR_TAGS`       | Extra Derpibooru tags every guest avatar must have (optional), see below |
+| `GUEST_PONY_NAMES_FILE`   | File with guest pony names replacing the built-in list (optional), see below |
 
 ### Guest names and avatars
 
 Viewers who log in with the stream password get a pony name, e.g. *Fluttershy* or *DJ Pon-3*. On public streams, Discord viewers get one too, so everyone watching is anonymous to each other. The streamer dock shows each pony next to the viewer's IP and, for Discord viewers, their Discord account.
 
-A guest keeps the same pony for the whole stream, including across page refreshes and reconnects, and gets a new one when the next stream starts. Guests who like theirs can click the pin next to their name in the viewer list to keep it for future streams, and click it again to get a new one next time. The streamer can give a guest a different picture of their pony with the 🎲 button in the dock's viewer list. Identities are stored in the SQLite database, so they survive restarts.
+A guest keeps the same pony for the whole stream, including across page refreshes and reconnects, and gets a new one when the next stream starts. Guests who like theirs can click the pin next to their name in the viewer list to keep it for future streams, and click it again to get a new one next time. Guests can get a different picture of their pony with the 🎲 button next to their name, once every 30 seconds; the streamer can do the same for anyone with the 🎲 button in the dock's viewer list (without the wait). Identities are stored in the SQLite database, so they survive restarts.
 
 Each guest also gets an avatar: a solo picture of their namesake, looked up through the [Derpibooru API](https://derpibooru.org/pages/api). Images are hotlinked from Derpibooru's CDN. Nothing is downloaded; only each guest's chosen image URL is saved with their identity.
 
@@ -130,6 +132,25 @@ GUEST_AVATAR_TAGS=cute,smiling,-sad
 ```
 
 Tags are combined with the guest's pony and the filter. If a pony has no matching pictures, the guest gets a generic pony picture with the same tags instead. Changing either setting re-picks existing avatars that no longer match.
+
+Guests can also pick one favourite tag of their own with the 🏷 button next to their name, e.g. `cute` or `hat`. It only affects their own pictures, on top of `GUEST_AVATAR_TAGS`, and stays with them across streams, even when they get a new pony. If their pony has no pictures with that tag, it's ignored until they get one that does. Changing it picks a new picture, so it shares the 30-second wait with the 🎲 button.
+
+#### Custom pony names
+
+`GUEST_PONY_NAMES_FILE` replaces the built-in list of names with your own: a text file with one pony per line, optionally followed by `|` and the Derpibooru tag used to find its pictures (by default, the name itself). Empty lines and lines starting with `#` are ignored:
+
+```text
+# Mane six only
+Twilight Sparkle
+Rainbow Dash
+Pinkie Pie
+Rarity
+Applejack
+Fluttershy
+Best Pony | derpy hooves
+```
+
+The `config` folder is already mounted into the container, so the easiest place for it is `config/pony-names.txt` with `GUEST_PONY_NAMES_FILE=/data/pony-names.txt`. The file is read on startup, so restart the container after editing it. Changing the list gives guests new ponies (kept ones too) and new pictures to match. If the file can't be read or has no names, the built-in list is used and an error is logged.
 
 ### `DISCORD_WEBHOOK_URLS`
 
@@ -314,7 +335,7 @@ Available settings, adjustable per-stream and optionally saved for next time:
 * **Degradation preference** - when bandwidth/CPU can't keep up, whether the encoder should drop resolution to keep the framerate smooth (`maintain-framerate`, the default - usually fixes stutter), drop framerate to keep resolution sharp (`maintain-resolution`), or balance both
 * **Audio** - whether to include system/tab audio, and its target bitrate; if the browser/OS can't provide audio for the chosen source, the stream automatically falls back to video-only instead of failing to start. If audio capture fails with a "Could not start audio source" error, a virtual surround sound effect on your headphones/audio device is a common cause - try disabling it.
 
-Saved settings are stored in a small SQLite database inside the Next.js container, always at the fixed path `/data/sqlite/discordmtx.db`; mount `/data/sqlite` as a volume (already done in the provided `docker-compose.yaml`, mapped to `./config`) to persist them across restarts.
+Saved settings are stored in a small SQLite database inside the Next.js container, always at the fixed path `/data/sqlite/discordmtx.db`; mount `/data` as a volume (already done in the provided `docker-compose.yaml`, mapped to `./config`, so the database ends up in `config/sqlite`) to persist them across restarts. A database left at `config/discordmtx.db` by an older version is moved there automatically on startup.
 
 Because everything runs in the browser, resolution and framerate are no longer forced to a single global setting like they are in OBS - the browser panel captures at whatever the source natively provides (or a fixed size you choose), independently from anything else running on the machine.
 

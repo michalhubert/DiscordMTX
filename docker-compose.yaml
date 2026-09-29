@@ -65,9 +65,11 @@ services:
       GUEST_AVATAR_FILTER_ID: ${GUEST_AVATAR_FILTER_ID:-}
       # Optional extra Derpibooru tags every guest avatar must have, e.g. "cute,smiling" (prefix with - to exclude)
       GUEST_AVATAR_TAGS: ${GUEST_AVATAR_TAGS:-}
+      # Optional file replacing the built-in guest pony names, e.g. /data/pony-names.txt (put it in the config folder)
+      GUEST_PONY_NAMES_FILE: ${GUEST_PONY_NAMES_FILE:-}
 
     volumes:
-      - ./config:/data/sqlite # persists the SQLite database (saved /stream settings)
+      - ./config:/data # config files, and the SQLite database (saved /stream settings) in config/sqlite
 
     ports:
       - "${NEXTJS_PORT:-8080}:3000"

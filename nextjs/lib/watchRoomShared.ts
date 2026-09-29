@@ -24,8 +24,10 @@ export type WatchReaction = {
   at: number;
 };
 
+// A guest's own pony settings; null for non-guests.
+export type WatchGuest = { kept: boolean; favoriteTag: string | null; rerollInMs: number };
+
 export type WatchEvent =
-  // kept: null for non-guests.
-  | { type: "hello"; connectionId: string; self: WatchViewer; kept: boolean | null }
+  | { type: "hello"; connectionId: string; self: WatchViewer; guest: WatchGuest | null }
   | { type: "presence"; viewers: WatchViewer[] }
   | ({ type: "reaction" } & WatchReaction);

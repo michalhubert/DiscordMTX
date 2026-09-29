@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
-import { mkdirSync } from "fs";
-import { dirname } from "path";
+import { existsSync, mkdirSync, renameSync } from "fs";
+import { dirname, join } from "path";
 
 export type StreamSourceType = "monitor" | "window" | "browser";
 export type StreamVideoCodec = "auto" | "vp9" | "vp8" | "h264" | "av1";
@@ -39,6 +39,23 @@ export const DEFAULT_STREAM_SETTINGS: StreamSettings = {
 };
 
 const DB_PATH = "/data/sqlite/discordmtx.db";
+// Where the database was when /data/sqlite itself was the volume, i.e. at the
+// root of the mounted folder now that /data is.
+const LEGACY_DB_PATH = "/data/discordmtx.db";
+
+function moveLegacyDb(): void {
+  if (existsSync(DB_PATH) || !existsSync(LEGACY_DB_PATH)) return;
+  try {
+    for (const suffix of ["", "-wal", "-shm"]) {
+      if (existsSync(LEGACY_DB_PATH + suffix)) {
+        renameSync(LEGACY_DB_PATH + suffix, join(dirname(DB_PATH), `discordmtx.db${suffix}`));
+      }
+    }
+    console.log(`Moved the database from ${LEGACY_DB_PATH} to ${DB_PATH}`);
+  } catch (err) {
+    console.error(`Failed to move the database from ${LEGACY_DB_PATH} to ${DB_PATH}:`, err);
+  }
+}
 
 let db: Database.Database | null = null;
 
@@ -49,6 +66,7 @@ function getDb(): Database.Database {
     mkdirSync(dirname(DB_PATH), { recursive: true });
   } catch {
   }
+  moveLegacyDb();
 
   db = new Database(DB_PATH);
   db.pragma("journal_mode = WAL");
@@ -104,6 +122,9 @@ function getDb(): Database.Database {
   const guestColumns = db.pragma("table_info(guest_identities)") as { name: string }[];
   if (guestColumns.some((c) => c.name === "avatar_ratings")) {
     db.exec("ALTER TABLE guest_identities RENAME COLUMN avatar_ratings TO avatar_settings");
+  }
+  if (!guestColumns.some((c) => c.name === "favorite_tag")) {
+    db.exec("ALTER TABLE guest_identities ADD COLUMN favorite_tag TEXT");
   }
   db.exec(`
     CREATE TABLE IF NOT EXISTS discord_webhook_messages (
@@ -335,13 +356,14 @@ export type GuestIdentityRow = {
   avatar_settings: string | null;
   keep: number;
   stream_session_id: number | null;
+  favorite_tag: string | null;
 };
 
 export function getGuestIdentity(path: string, ip: string): GuestIdentityRow | null {
   try {
     const row = getDb()
       .prepare(
-        "SELECT path, ip, seed, avatar_url, avatar_settings, keep, stream_session_id FROM guest_identities WHERE path = ? AND ip = ?"
+        "SELECT path, ip, seed, avatar_url, avatar_settings, keep, stream_session_id, favorite_tag FROM guest_identities WHERE path = ? AND ip = ?"
       )
       .get(path, ip) as GuestIdentityRow | undefined;
     return row ?? null;
@@ -355,14 +377,15 @@ export function saveGuestIdentity(row: GuestIdentityRow): void {
   try {
     getDb()
       .prepare(
-        `INSERT INTO guest_identities (path, ip, seed, avatar_url, avatar_settings, keep, stream_session_id)
-         VALUES (@path, @ip, @seed, @avatar_url, @avatar_settings, @keep, @stream_session_id)
+        `INSERT INTO guest_identities (path, ip, seed, avatar_url, avatar_settings, keep, stream_session_id, favorite_tag)
+         VALUES (@path, @ip, @seed, @avatar_url, @avatar_settings, @keep, @stream_session_id, @favorite_tag)
          ON CONFLICT(path, ip) DO UPDATE SET
            seed = excluded.seed,
            avatar_url = excluded.avatar_url,
            avatar_settings = excluded.avatar_settings,
            keep = excluded.keep,
-           stream_session_id = excluded.stream_session_id`
+           stream_session_id = excluded.stream_session_id,
+           favorite_tag = excluded.favorite_tag`
       )
       .run(row);
   } catch (err) {

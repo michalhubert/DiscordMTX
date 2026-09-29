@@ -86,8 +86,18 @@ export default function PlayerClient({ path, whepUrl }: Props) {
     }, FLOAT_DURATION_S * 1000)
   }, [])
 
-  const { viewers, self, kept, toggleKeep, sendReaction, canReact } =
-    useWatchRoom(path, handleReaction)
+  const {
+    viewers,
+    self,
+    guest,
+    toggleKeep,
+    rerollReadyAt,
+    ponyBusy,
+    rerollAvatar,
+    setFavoriteTag,
+    sendReaction,
+    canReact,
+  } = useWatchRoom(path, handleReaction)
   useEffect(() => {
     selfIdRef.current = self?.id ?? null
   }, [self])
@@ -233,8 +243,12 @@ export default function PlayerClient({ path, whepUrl }: Props) {
                 <ViewersOverlay
                   viewers={viewers}
                   selfId={self?.id ?? null}
-                  selfKept={kept}
+                  guest={guest}
+                  rerollReadyAt={rerollReadyAt}
+                  ponyBusy={ponyBusy}
                   onToggleKeep={toggleKeep}
+                  onReroll={rerollAvatar}
+                  onSetFavoriteTag={setFavoriteTag}
                   onHide={toggleViewers}
                 />
               )}
