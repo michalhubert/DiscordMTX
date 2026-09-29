@@ -129,6 +129,14 @@ export function clearApprovedViewers(path: string): void {
   approvedViewers.delete(path);
 }
 
+export function clearPendingRequests(path: string): void {
+  for (const [k, entry] of pendingRequests) {
+    if (entry.path === path) {
+      pendingRequests.delete(k);
+    }
+  }
+}
+
 // Rotating the password for `rotatedPath` also invalidates any other path that has no
 // password override of its own and therefore falls back to it - so those paths' password
 // viewers must be cleared too, not just `rotatedPath` itself.
