@@ -10,7 +10,6 @@ import {
   type WatchReaction,
 } from '@/lib/watchRoomShared'
 import { usePlayerStore } from '@/lib/playerStore'
-import ConnectionWarnings from './components/ConnectionWarnings'
 import FloatingReactions, {
   FLOAT_DURATION_S,
   type FloatingReaction,
@@ -284,7 +283,6 @@ export default function PlayerClient({ path, whepUrl }: Props) {
             </AnimatePresence>
           </div>
           <div className="order-1 flex flex-col items-center gap-2 sm:col-start-2 sm:row-start-1">
-            <ConnectionWarnings warnings={warnings} stats={stats} />
             <AnimatePresence>
               {autoMuted && (
                 <motion.div
@@ -354,6 +352,7 @@ export default function PlayerClient({ path, whepUrl }: Props) {
             onToggleViewers={toggleShowViewers}
             quality={quality}
             stats={stats}
+            warnings={warnings}
           />
         </div>
       )}

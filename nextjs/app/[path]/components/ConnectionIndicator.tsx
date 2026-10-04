@@ -1,7 +1,9 @@
+import { TriangleAlert, WifiOff } from 'lucide-react'
 import {
   WARN_AT,
   type ConnectionQuality,
   type ConnectionStats,
+  type ConnectionWarning,
 } from '../hooks/useConnectionStats'
 
 const DASH = '–'
@@ -75,15 +77,17 @@ function StatRow({
 interface Props {
   quality: ConnectionQuality
   stats: ConnectionStats | null
+  warnings: ConnectionWarning[]
 }
 
 const round = (value: number | null | undefined) =>
   value == null ? null : Math.round(value).toString()
 
 // Signal bars + bitrate; hovering/focusing opens the stats card.
-export default function ConnectionIndicator({ quality, stats }: Props) {
+export default function ConnectionIndicator({ quality, stats, warnings }: Props) {
   const meta = qualityMeta[quality]
   const [rate, rateUnit] = stats ? bitrate(stats.bitrateKbps) : [DASH, '']
+  const critical = warnings.some((w) => w.severity === 'critical')
 
   return (
     <div className="group/stats relative flex">
@@ -101,6 +105,31 @@ export default function ConnectionIndicator({ quality, stats }: Props) {
       </button>
 
       <div className="pointer-events-none absolute bottom-full left-0 mb-3 w-64 translate-y-1 rounded-xl bg-neutral-900/95 p-3 text-xs opacity-0 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl transition-all duration-150 group-hover/stats:translate-y-0 group-hover/stats:opacity-100 group-has-[:focus-visible]/stats:translate-y-0 group-has-[:focus-visible]/stats:opacity-100">
+        {warnings.length > 0 && (
+          <div
+            className={`mb-2 flex items-start gap-2 rounded-lg border px-2 py-1.5 ${
+              critical
+                ? 'border-red-400/30 bg-red-950/75 text-red-100'
+                : 'border-amber-400/30 bg-amber-950/70 text-amber-100'
+            }`}
+          >
+            <span className="mt-0.5 shrink-0">
+              {warnings[0].id === 'offline' ? (
+                <WifiOff className="h-3.5 w-3.5" />
+              ) : (
+                <TriangleAlert className="h-3.5 w-3.5" />
+              )}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-medium leading-tight">{warnings[0].message}</p>
+              {warnings.length > 1 && (
+                <p className="mt-0.5 text-[10px] opacity-75">
+                  +{warnings.length - 1} more
+                </p>
+              )}
+            </div>
+          </div>
+        )}
         <div className="mb-2 flex items-center justify-between border-b border-white/10 pb-2">
           <span className="font-semibold text-white">Connection</span>
           <span

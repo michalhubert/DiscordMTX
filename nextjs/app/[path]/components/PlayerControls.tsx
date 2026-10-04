@@ -11,6 +11,7 @@ import type { Reaction } from '@/lib/watchRoomShared'
 import type {
   ConnectionQuality,
   ConnectionStats,
+  ConnectionWarning,
 } from '../hooks/useConnectionStats'
 import ConnectionIndicator from './ConnectionIndicator'
 import ControlTooltip from './ControlTooltip'
@@ -33,6 +34,7 @@ interface Props {
   onToggleViewers: () => void
   quality: ConnectionQuality
   stats: ConnectionStats | null
+  warnings: ConnectionWarning[]
 }
 
 function IconButton({
@@ -76,6 +78,7 @@ export default function PlayerControls({
   onToggleViewers,
   quality,
   stats,
+  warnings,
 }: Props) {
   const level = isMuted ? 0 : volume
   const VolumeIcon = level === 0 ? VolumeX : level < 0.5 ? Volume1 : Volume2
@@ -120,7 +123,7 @@ export default function PlayerControls({
             </IconButton>
           </ControlTooltip>
 
-          <ConnectionIndicator quality={quality} stats={stats} />
+          <ConnectionIndicator quality={quality} stats={stats} warnings={warnings} />
         </div>
 
         <div className="rounded-full bg-white/[0.08] p-1 shadow-lg ring-1 ring-white/10 backdrop-blur-md">
