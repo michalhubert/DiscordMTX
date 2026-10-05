@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { ChangeEvent } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { VolumeX, X } from 'lucide-react'
 import {
@@ -8,7 +9,7 @@ import {
   type Reaction,
   type WatchReaction,
 } from '@/lib/watchRoomShared'
-import ConnectionWarnings from './components/ConnectionWarnings'
+import { usePlayerStore } from '@/lib/playerStore'
 import FloatingReactions, {
   FLOAT_DURATION_S,
   type FloatingReaction,
@@ -21,29 +22,11 @@ import ViewersOverlay from './components/ViewersOverlay'
 import { useConnectionStats } from './hooks/useConnectionStats'
 import { useFullscreen } from './hooks/useFullscreen'
 import { useIsTouchDevice } from './hooks/useIsTouchDevice'
-import { useStoredToggle } from './hooks/useStoredToggle'
 import { useWatchRoom } from './hooks/useWatchRoom'
 import { useWhepPlayer } from './hooks/useWhepPlayer'
 
 const CONTROLS_HIDE_DELAY_MS = 3000
 const MAX_FLOATING_REACTIONS = 30
-const SHOW_VIEWERS_STORAGE_KEY = 'discordmtx:showViewers'
-const VOLUME_STORAGE_KEY = 'discordmtx:volume'
-const MUTED_STORAGE_KEY = 'discordmtx:muted'
-
-function readStored(key: string): string | null {
-  try {
-    return localStorage.getItem(key)
-  } catch {
-    return null
-  }
-}
-
-function writeStored(key: string, value: string) {
-  try {
-    localStorage.setItem(key, value)
-  } catch {}
-}
 
 interface Props {
   path: string
@@ -55,8 +38,14 @@ export default function PlayerClient({ path, whepUrl }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const controlsHideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const [isMuted, setIsMuted] = useState(false)
-  const [volume, setVolume] = useState(1)
+  const {
+    volume,
+    muted,
+    showViewers,
+    setVolume,
+    setMuted,
+    toggleShowViewers,
+  } = usePlayerStore()
   // Muted by the browser's autoplay policy rather than by the viewer.
   const [autoMuted, setAutoMuted] = useState(false)
   const [controlsVisible, setControlsVisible] = useState(true)
@@ -67,19 +56,10 @@ export default function PlayerClient({ path, whepUrl }: Props) {
     videoRef,
   )
 
-  // Restore the viewer's volume before the stream starts playing. Read after
-  // mount, since the server render can't see localStorage.
-  useEffect(() => {
-    const storedVolume = Number(readStored(VOLUME_STORAGE_KEY) ?? NaN)
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (storedVolume >= 0 && storedVolume <= 1) setVolume(storedVolume)
-    if (readStored(MUTED_STORAGE_KEY) === 'true') setIsMuted(true)
-  }, [])
-
   const handleAutoMuteRequired = useCallback(() => {
-    setIsMuted(true)
+    setMuted(true)
     setAutoMuted(true)
-  }, [])
+  }, [setMuted])
 
   // Browsers only allow sound after the viewer interacts with the page, so a
   // refresh starts muted: unmute on their first click or key press.
@@ -92,7 +72,7 @@ export default function PlayerClient({ path, whepUrl }: Props) {
       setAutoMuted(false)
       if (!video) return
       video.muted = false
-      setIsMuted(false)
+      setMuted(false)
       video.play().catch(() => {})
     }
     window.addEventListener('click', unmute, true)
@@ -101,7 +81,7 @@ export default function PlayerClient({ path, whepUrl }: Props) {
       window.removeEventListener('click', unmute, true)
       window.removeEventListener('keydown', unmute, true)
     }
-  }, [autoMuted])
+  }, [autoMuted, setMuted])
 
   const { status, peerConnectionRef } = useWhepPlayer({
     whepUrl,
@@ -117,10 +97,6 @@ export default function PlayerClient({ path, whepUrl }: Props) {
 
   const [floating, setFloating] = useState<FloatingReaction[]>([])
   const [reactionTrayOpen, setReactionTrayOpen] = useState(false)
-  const [viewersVisible, toggleViewers] = useStoredToggle(
-    SHOW_VIEWERS_STORAGE_KEY,
-    true,
-  )
 
   const selfIdRef = useRef<string | null>(null)
   const handleReaction = useCallback((reaction: WatchReaction) => {
@@ -178,7 +154,7 @@ export default function PlayerClient({ path, whepUrl }: Props) {
       if (Number.isInteger(index) && index >= 0 && index < REACTIONS.length) {
         react(REACTIONS[index])
       } else if (e.key === 'v' || e.key === 'V') {
-        toggleViewers()
+        toggleShowViewers()
       } else if (e.key === 'm' || e.key === 'M') {
         playbackShortcuts.current.toggleMute()
       } else if (e.key === 'f' || e.key === 'F') {
@@ -187,7 +163,7 @@ export default function PlayerClient({ path, whepUrl }: Props) {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [react, toggleViewers])
+  }, [react, toggleShowViewers])
 
   const controlsHeld = useRef(false)
 
@@ -240,32 +216,28 @@ export default function PlayerClient({ path, whepUrl }: Props) {
     if (!video) return
     setAutoMuted(false)
 
-    if (isMuted) {
-      setIsMuted(false)
+    if (muted) {
+      setMuted(false)
       video.muted = false
       if (volume === 0) {
         setVolume(1)
         video.volume = 1
-        writeStored(VOLUME_STORAGE_KEY, '1')
       }
       video.play().catch(() => {})
     } else {
-      setIsMuted(true)
+      setMuted(true)
       video.muted = true
     }
-    writeStored(MUTED_STORAGE_KEY, String(!isMuted))
   }
 
-  function handleVolumeChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleVolumeChange(e: ChangeEvent<HTMLInputElement>) {
     const next = Number(e.target.value)
     setAutoMuted(false)
     setVolume(next)
-    setIsMuted(next === 0)
+    setMuted(next === 0)
     if (videoRef.current) {
       videoRef.current.muted = next === 0
     }
-    writeStored(VOLUME_STORAGE_KEY, String(next))
-    writeStored(MUTED_STORAGE_KEY, String(next === 0))
   }
 
   useEffect(() => {
@@ -285,7 +257,7 @@ export default function PlayerClient({ path, whepUrl }: Props) {
         ref={videoRef}
         autoPlay
         playsInline
-        muted={isMuted}
+        muted={muted}
         className="w-full h-full object-contain"
       />
 
@@ -295,7 +267,7 @@ export default function PlayerClient({ path, whepUrl }: Props) {
         <div className="pointer-events-none absolute inset-x-3 top-3 z-20 flex flex-col gap-2 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-start">
           <div className="order-2 sm:col-start-1 sm:row-start-1">
             <AnimatePresence>
-              {viewersVisible && viewers.length > 0 && (
+              {showViewers && viewers.length > 0 && (
                 <ViewersOverlay
                   viewers={viewers}
                   selfId={self?.id ?? null}
@@ -305,13 +277,12 @@ export default function PlayerClient({ path, whepUrl }: Props) {
                   onToggleKeep={toggleKeep}
                   onReroll={rerollAvatar}
                   onSetFavoriteTag={setFavoriteTag}
-                  onHide={toggleViewers}
+                  onHide={toggleShowViewers}
                 />
               )}
             </AnimatePresence>
           </div>
           <div className="order-1 flex flex-col items-center gap-2 sm:col-start-2 sm:row-start-1">
-            <ConnectionWarnings warnings={warnings} stats={stats} />
             <AnimatePresence>
               {autoMuted && (
                 <motion.div
@@ -368,7 +339,7 @@ export default function PlayerClient({ path, whepUrl }: Props) {
             visible={controlsVisible}
             onHoldVisible={holdControlsVisible}
             isLive={isLive}
-            isMuted={isMuted}
+            isMuted={muted}
             volume={volume}
             isFullscreen={isFullscreen}
             onToggleMute={toggleMute}
@@ -377,10 +348,11 @@ export default function PlayerClient({ path, whepUrl }: Props) {
             canReact={canReact && isLive}
             onReact={react}
             viewerCount={viewers.length}
-            viewersVisible={viewersVisible}
-            onToggleViewers={toggleViewers}
+            viewersVisible={showViewers}
+            onToggleViewers={toggleShowViewers}
             quality={quality}
             stats={stats}
+            warnings={warnings}
           />
         </div>
       )}
@@ -388,15 +360,15 @@ export default function PlayerClient({ path, whepUrl }: Props) {
       {/* Mobile edge swipeable tab & panel */}
       <div className={isTouchDevice ? 'block' : 'hidden max-md:block'}>
         <MobileEdgePanel
-          isMuted={isMuted}
+          isMuted={muted}
           isFullscreen={isFullscreen}
           onToggleMute={toggleMute}
           onToggleFullscreen={toggleFullscreen}
           reactionsOpen={reactionTrayOpen}
           onToggleReactions={() => setReactionTrayOpen((open) => !open)}
-          viewersVisible={viewersVisible}
+          viewersVisible={showViewers}
           viewerCount={viewers.length}
-          onToggleViewers={toggleViewers}
+          onToggleViewers={toggleShowViewers}
           quality={quality}
         />
       </div>
