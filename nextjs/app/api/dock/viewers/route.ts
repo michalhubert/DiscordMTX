@@ -4,10 +4,10 @@ import {
   pruneViewerIdentities,
 } from '@/lib/viewerIdentities'
 import { kickViewerIp } from '@/lib/kickedViewers'
-import { kickWebrtcSession } from '@/lib/mediamtx'
+import { fetchWebrtcSessions, kickWebrtcSession } from '@/lib/mediamtx'
 import { revokeApproval } from '@/lib/accessRequests'
 import { disconnectWatchViewer } from '@/lib/watchRoom'
-import { cachedGuestIdentity, ponyKeyFor } from '@/lib/guestIdentity'
+import { cachedGuestIdentity, ponyKeyForSession } from '@/lib/guestIdentity'
 import { NextRequest } from 'next/server'
 
 export async function GET() {
@@ -15,64 +15,34 @@ export async function GET() {
     return new Response('Unauthorized', { status: 401 })
   }
 
-  const host = process.env.MEDIAMTX_HOST ?? 'discordmtx'
-  const apiPort = process.env.MEDIAMTX_API_PORT ?? '9997'
-  const upstream = `http://${host}:${apiPort}/v3/webrtcsessions/list`
-
-  try {
-    const res = await fetch(upstream, {
-      headers: { Accept: 'application/json' },
-      cache: 'no-store',
-    })
-
-    if (!res.ok) {
-      return new Response(await res.text(), {
-        status: res.status,
-        headers: { 'Content-Type': 'application/json' },
-      })
-    }
-
-    const data = await res.json()
-    const items: { id: string; [key: string]: unknown }[] = data.items || []
-
-    pruneViewerIdentities(items.map((item) => item.id))
-
-    const merged = items.map((item) => {
-      const identity = getViewerIdentity(item.id)
-      const ponyKey =
-        identity?.ip && identity.path
-          ? ponyKeyFor(identity.role, identity.name, identity.ip, identity.path)
-          : null
-      // Looked up each time: a pony can change while connected (avatar picked later, reroll).
-      const pony =
-        identity?.path && ponyKey
-          ? cachedGuestIdentity(identity.path, ponyKey)
-          : null
-      return {
-        ...item,
-        viewerName: pony?.name ?? identity?.name ?? null,
-        viewerImage: pony ? pony.image : (identity?.image ?? null),
-        viewerRole: identity?.role ?? null,
-        viewerIp: identity?.ip ?? null,
-        viewerHasPony: !!pony,
-        // The real Discord account behind a pony.
-        viewerDiscordName:
-          pony && identity?.role === 'discord' ? identity.name : null,
-        viewerDiscordImage:
-          pony && identity?.role === 'discord' ? identity.image : null,
-      }
-    })
-
-    return new Response(JSON.stringify({ ...data, items: merged }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    })
-  } catch {
-    return new Response(JSON.stringify({ error: 'MediaMTX API unreachable' }), {
-      status: 502,
-      headers: { 'Content-Type': 'application/json' },
-    })
+  const items = await fetchWebrtcSessions()
+  if (!items) {
+    return Response.json({ error: 'MediaMTX API unreachable' }, { status: 502 })
   }
+
+  pruneViewerIdentities(items.map((item) => item.id))
+
+  const merged = items.map((item) => {
+    const identity = getViewerIdentity(item.id)
+    const guest = ponyKeyForSession(identity)
+    // Looked up each time: a pony can change while connected (avatar picked later, reroll).
+    const pony = guest ? cachedGuestIdentity(guest.path, guest.ponyKey) : null
+    return {
+      ...item,
+      viewerName: pony?.name ?? identity?.name ?? null,
+      viewerImage: pony ? pony.image : (identity?.image ?? null),
+      viewerRole: identity?.role ?? null,
+      viewerIp: identity?.ip ?? null,
+      viewerHasPony: !!pony,
+      // The real Discord account behind a pony.
+      viewerDiscordName:
+        pony && identity?.role === 'discord' ? identity.name : null,
+      viewerDiscordImage:
+        pony && identity?.role === 'discord' ? identity.image : null,
+    }
+  })
+
+  return Response.json({ items: merged })
 }
 
 export async function DELETE(req: NextRequest) {
@@ -99,19 +69,11 @@ export async function DELETE(req: NextRequest) {
 
   const kicked = await kickWebrtcSession(sessionId)
   if (!kicked) {
-    return new Response(
-      JSON.stringify({
-        error: 'MediaMTX API unreachable or session not found',
-      }),
-      {
-        status: 502,
-        headers: { 'Content-Type': 'application/json' },
-      },
+    return Response.json(
+      { error: 'MediaMTX API unreachable or session not found' },
+      { status: 502 },
     )
   }
 
-  return new Response(JSON.stringify({ ok: true }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-  })
+  return Response.json({ ok: true })
 }

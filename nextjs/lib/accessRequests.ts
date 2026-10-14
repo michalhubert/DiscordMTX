@@ -15,27 +15,23 @@ export type PendingRequest = {
 
 const STALE_MS = 2 * 60 * 1000;
 
+const DEFAULT_TIMEOUT_MINUTES = [1, 5, 15];
+
 function getTimeoutDurations(): number[] {
   const env = process.env.DENIAL_TIMEOUTS;
-  if (!env) return [1, 5, 15].map((m) => m * 60 * 1000);
-  
-  try {
-    const minutes = env.split(",").map((s) => parseInt(s.trim(), 10));
-    if (minutes.some(isNaN) || minutes.length === 0) {
-      console.warn("Invalid DENIAL_TIMEOUTS format, using defaults");
-      return [1, 5, 15].map((m) => m * 60 * 1000);
-    }
-    return minutes.map((m) => m * 60 * 1000);
-  } catch (err) {
-    console.warn("Error parsing DENIAL_TIMEOUTS, using defaults:", err);
-    return [1, 5, 15].map((m) => m * 60 * 1000);
+  let minutes = DEFAULT_TIMEOUT_MINUTES;
+  if (env) {
+    const parsed = env.split(",").map((s) => parseInt(s.trim(), 10));
+    if (parsed.some(isNaN)) console.warn("Invalid DENIAL_TIMEOUTS format, using defaults");
+    else minutes = parsed;
   }
+  return minutes.map((m) => m * 60 * 1000);
 }
 
 const TIMEOUT_MS = getTimeoutDurations();
 
 const pendingRequests = new Map<string, PendingRequest>();
-const approvedViewers = new Map<string, Map<string, { role?: string; approvedAt: number }>>();
+const approvedViewers = new Map<string, { path: string; role?: string; approvedAt: number }>();
 
 function pruneStale() {
   const now = Date.now();
@@ -46,10 +42,7 @@ function pruneStale() {
 }
 
 export function isApproved(path: string, ip: string, role?: string): boolean {
-  const map = approvedViewers.get(path);
-  if (!map) return false;
-  const entry = map.get(key(path, ip, role));
-  return !!entry;
+  return approvedViewers.has(key(path, ip, role));
 }
 
 export function requestAccess(
@@ -86,12 +79,7 @@ export function requestAccess(
 }
 
 export function approveAccess(path: string, ip: string, role?: string): void {
-  let map = approvedViewers.get(path);
-  if (!map) {
-    map = new Map();
-    approvedViewers.set(path, map);
-  }
-  map.set(key(path, ip, role), { role, approvedAt: Date.now() });
+  approvedViewers.set(key(path, ip, role), { path, role, approvedAt: Date.now() });
   pendingRequests.delete(key(path, ip, role));
 
   const streamSession = getStreamSessionByPath(path);
@@ -103,21 +91,20 @@ export function approveAccess(path: string, ip: string, role?: string): void {
 export function denyAccess(path: string, ip: string, role?: string): void {
   const k = key(path, ip, role);
   pendingRequests.delete(k);
-  approvedViewers.get(path)?.delete(k);
+  approvedViewers.delete(k);
 
   const streamSession = getStreamSessionByPath(path);
   if (!streamSession) return;
 
   const existing = getDenialRecord(streamSession.id, ip);
   const denialCount = existing ? Math.min(existing.denial_count + 1, TIMEOUT_MS.length) : 1;
-  const timeoutIndex = Math.min(denialCount - 1, TIMEOUT_MS.length - 1);
-  const deniedUntil = Date.now() + TIMEOUT_MS[timeoutIndex];
+  const deniedUntil = Date.now() + TIMEOUT_MS[denialCount - 1];
 
   setDenialRecord(streamSession.id, ip, denialCount, deniedUntil);
 }
 
 export function revokeApproval(path: string, ip: string, role?: string): void {
-  approvedViewers.get(path)?.delete(key(path, ip, role));
+  approvedViewers.delete(key(path, ip, role));
 }
 
 export function listPendingRequests(): PendingRequest[] {
@@ -126,7 +113,9 @@ export function listPendingRequests(): PendingRequest[] {
 }
 
 export function clearApprovedViewers(path: string): void {
-  approvedViewers.delete(path);
+  for (const [k, entry] of approvedViewers) {
+    if (entry.path === path) approvedViewers.delete(k);
+  }
 }
 
 export function clearPendingRequests(path: string): void {
@@ -140,14 +129,14 @@ export function clearPendingRequests(path: string): void {
 // Rotating the password for `rotatedPath` also invalidates any other path that has no
 // password override of its own and therefore falls back to it - so those paths' password
 // viewers must be cleared too, not just `rotatedPath` itself.
+export function usesPasswordOf(path: string, rotatedPath: string): boolean {
+  return path === rotatedPath || (rotatedPath === "default" && !getViewerPassword(path));
+}
+
 export function clearApprovedPasswordViewers(rotatedPath: string): void {
-  for (const [path, map] of approvedViewers) {
-    const usesRotatedPassword = path === rotatedPath || (rotatedPath === "default" && !getViewerPassword(path));
-    if (!usesRotatedPassword) continue;
-    for (const [k, entry] of Array.from(map.entries())) {
-      if (entry.role !== "discord") {
-        map.delete(k);
-      }
+  for (const [k, entry] of approvedViewers) {
+    if (entry.role !== "discord" && usesPasswordOf(entry.path, rotatedPath)) {
+      approvedViewers.delete(k);
     }
   }
 }

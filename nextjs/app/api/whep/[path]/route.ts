@@ -1,10 +1,10 @@
 import { auth } from '@/lib/auth'
 import { rememberViewerIdentity } from '@/lib/viewerIdentities'
 import { getClientIp } from '@/lib/net'
-import { getPathVisibility } from '@/lib/db'
-import { isApproved } from '@/lib/accessRequests'
 import { getKickInfo } from '@/lib/kickedViewers'
-import { isViewerPasswordStale, type SessionUser } from '@/lib/authz'
+import { type SessionUser } from '@/lib/authz'
+import { watchAccessDenied } from '@/lib/watchAccess'
+import { forwardSdpHeaders, mediamtxWebrtcBase } from '@/lib/mediamtx'
 import { NextRequest } from 'next/server'
 
 export async function POST(
@@ -20,34 +20,22 @@ export async function POST(
   const user = session.user as SessionUser
   const ip = getClientIp(req)
 
-  // Refuse to hand out a new WHEP session once the streamer has rotated the password -
-  // the client is forced back to the login screen instead of silently reconnecting.
-  if (isViewerPasswordStale(user, path)) {
+  const denied = watchAccessDenied(user, path, ip)
+  if (denied === 401) {
     return new Response('Viewer password changed', { status: 401 })
   }
-
-  // Recently kicked by the streamer - refuse reconnects for the cooldown window
-  const kickInfo =
-    user.role !== 'streamer' ? getKickInfo(path, ip, user.role) : null
-  if (kickInfo) {
-    return new Response(
-      JSON.stringify({ error: 'kicked', kickedUntil: kickInfo.kickedUntil }),
-      {
-        status: 403,
-        headers: { 'Content-Type': 'application/json' },
-      },
-    )
-  }
-
-  if (user.role !== 'streamer' && getPathVisibility(path) === 'private') {
-    if (!isApproved(path, ip, user.role)) {
-      return new Response('Access not approved', { status: 403 })
+  if (denied === 403) {
+    const kickInfo = getKickInfo(path, ip, user.role)
+    if (kickInfo) {
+      return Response.json(
+        { error: 'kicked', kickedUntil: kickInfo.kickedUntil },
+        { status: 403 },
+      )
     }
+    return Response.json({ error: 'not-approved' }, { status: 403 })
   }
 
-  const host = process.env.MEDIAMTX_HOST ?? 'discordmtx'
-  const port = process.env.MEDIAMTX_PORT ?? '8889'
-  const upstream = `http://${host}:${port}/${path}/whep`
+  const upstream = `${mediamtxWebrtcBase()}/${path}/whep`
 
   const body = await req.text()
   const res = await fetch(upstream, {
@@ -56,19 +44,7 @@ export async function POST(
     body,
   })
 
-  const responseHeaders = new Headers()
-  for (const [key, value] of res.headers.entries()) {
-    const lower = key.toLowerCase()
-    if (
-      lower === 'content-type' ||
-      lower === 'location' ||
-      lower === 'link' ||
-      lower === 'accept-patch' ||
-      lower === 'id'
-    ) {
-      responseHeaders.set(key, value)
-    }
-  }
+  const responseHeaders = forwardSdpHeaders(res)
 
   const location = res.headers.get('location')
   // MediaMTX's "Id" response header carries the same session id used by

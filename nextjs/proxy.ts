@@ -4,35 +4,40 @@ import { authConfig } from '@/lib/auth.config'
 
 const { auth } = NextAuth(authConfig)
 
+const DOCK_PREFIXES = [
+  '/dock',
+  '/stream',
+  '/api/mediamtx',
+  '/api/dock',
+  '/api/stream',
+  '/api/whip',
+]
+
 export const proxy = auth((req) => {
+  const { pathname } = req.nextUrl
   const isLoggedIn = !!req.auth?.user
-  const isLoginPage = req.nextUrl.pathname.startsWith('/login')
-  const isAuthApi = req.nextUrl.pathname.startsWith('/api/auth')
-  const isDockArea =
-    req.nextUrl.pathname.startsWith('/dock') ||
-    req.nextUrl.pathname.startsWith('/stream') ||
-    req.nextUrl.pathname.startsWith('/api/mediamtx') ||
-    req.nextUrl.pathname.startsWith('/api/dock') ||
-    req.nextUrl.pathname.startsWith('/api/stream') ||
-    req.nextUrl.pathname.startsWith('/api/whip')
+  const isLoginPage = pathname.startsWith('/login')
+  const isAuthApi = pathname.startsWith('/api/auth')
+  const isDockArea = DOCK_PREFIXES.some((prefix) => pathname.startsWith(prefix))
   const dockAuthDisabled = process.env.DISABLE_DOCK_AUTH === 'true'
+
+  const redirectToLogin = (streamer: boolean) => {
+    const loginUrl = new URL('/login', req.url)
+    loginUrl.searchParams.set('callbackUrl', pathname)
+    if (streamer) loginUrl.searchParams.set('mode', 'streamer')
+    return Response.redirect(loginUrl)
+  }
 
   if (!isLoggedIn && !isLoginPage && !isAuthApi) {
     if (isDockArea && dockAuthDisabled) {
       return NextResponse.next()
     }
-    const loginUrl = new URL('/login', req.url)
-    loginUrl.searchParams.set('callbackUrl', req.nextUrl.pathname)
-    if (isDockArea) loginUrl.searchParams.set('mode', 'streamer')
-    return Response.redirect(loginUrl)
+    return redirectToLogin(isDockArea)
   }
 
   const role = (req.auth?.user as { role?: string } | undefined)?.role
   if (isDockArea && isLoggedIn && role !== 'streamer' && !dockAuthDisabled) {
-    const loginUrl = new URL('/login', req.url)
-    loginUrl.searchParams.set('callbackUrl', req.nextUrl.pathname)
-    loginUrl.searchParams.set('mode', 'streamer')
-    return Response.redirect(loginUrl)
+    return redirectToLogin(true)
   }
 })
 

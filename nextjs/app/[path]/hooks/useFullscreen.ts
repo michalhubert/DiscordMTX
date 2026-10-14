@@ -7,109 +7,74 @@ export function useFullscreen(
   const [isFullscreen, setIsFullscreen] = useState(false)
 
   function isCurrentlyFullscreen(): boolean {
-    const doc = document as Document & {
-      webkitFullscreenElement?: Element
-      mozFullScreenElement?: Element
-      msFullscreenElement?: Element
-    }
+    const doc = document as Document & { webkitFullscreenElement?: Element }
     const video = videoRef.current as
       (HTMLVideoElement & { webkitDisplayingFullscreen?: boolean }) | null
     return !!(
       doc.fullscreenElement ||
       doc.webkitFullscreenElement ||
-      doc.mozFullScreenElement ||
-      doc.msFullscreenElement ||
       video?.webkitDisplayingFullscreen
     )
+  }
+
+  // Standard API, plus webkit for Safari - and iOS, where only the <video>
+  // element itself can go fullscreen.
+  async function enterVideoFullscreen() {
+    const video = videoRef.current as
+      (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null
+    if (video?.webkitEnterFullscreen) video.webkitEnterFullscreen()
+    else if (video?.requestFullscreen) await video.requestFullscreen()
+    else return
+    setIsFullscreen(true)
   }
 
   async function toggleFullscreen() {
     const container = containerRef.current as
       | (HTMLDivElement & {
           webkitRequestFullscreen?: () => Promise<void> | void
-          mozRequestFullScreen?: () => Promise<void> | void
-          msRequestFullscreen?: () => Promise<void> | void
         })
       | null
-
     const video = videoRef.current as
-      | (HTMLVideoElement & {
-          webkitEnterFullscreen?: () => void
-          webkitExitFullscreen?: () => void
-          requestFullscreen?: () => Promise<void>
-        })
-      | null
-
+      (HTMLVideoElement & { webkitExitFullscreen?: () => void }) | null
     const doc = document as Document & {
       webkitFullscreenElement?: Element
-      mozFullScreenElement?: Element
-      msFullscreenElement?: Element
       webkitExitFullscreen?: () => Promise<void> | void
-      mozCancelFullScreen?: () => Promise<void> | void
-      msExitFullscreen?: () => Promise<void> | void
     }
 
     if (isCurrentlyFullscreen()) {
       try {
-        if (doc.exitFullscreen) {
+        if (doc.fullscreenElement) {
           await doc.exitFullscreen()
-        } else if (doc.webkitExitFullscreen) {
+        } else if (doc.webkitFullscreenElement && doc.webkitExitFullscreen) {
           await doc.webkitExitFullscreen()
-        } else if (doc.mozCancelFullScreen) {
-          await doc.mozCancelFullScreen()
-        } else if (doc.msExitFullscreen) {
-          await doc.msExitFullscreen()
         } else if (video?.webkitExitFullscreen) {
           video.webkitExitFullscreen()
         }
       } catch {}
       setIsFullscreen(false)
-    } else {
-      try {
-        if (container?.requestFullscreen) {
-          await container.requestFullscreen()
-          setIsFullscreen(true)
-        } else if (container?.webkitRequestFullscreen) {
-          await container.webkitRequestFullscreen()
-          setIsFullscreen(true)
-        } else if (container?.mozRequestFullScreen) {
-          await container.mozRequestFullScreen()
-          setIsFullscreen(true)
-        } else if (container?.msRequestFullscreen) {
-          await container.msRequestFullscreen()
-          setIsFullscreen(true)
-        } else if (video?.webkitEnterFullscreen) {
-          video.webkitEnterFullscreen()
-          setIsFullscreen(true)
-        } else if (video?.requestFullscreen) {
-          await video.requestFullscreen()
-          setIsFullscreen(true)
-        }
-      } catch {
-        // Fallback to video element fullscreen if container fullscreen failed/rejected on mobile
-        if (video?.webkitEnterFullscreen) {
-          try {
-            video.webkitEnterFullscreen()
-            setIsFullscreen(true)
-          } catch {}
-        } else if (video?.requestFullscreen) {
-          try {
-            await video.requestFullscreen()
-            setIsFullscreen(true)
-          } catch {}
-        }
+      return
+    }
+
+    try {
+      if (container?.requestFullscreen) {
+        await container.requestFullscreen()
+      } else if (container?.webkitRequestFullscreen) {
+        await container.webkitRequestFullscreen()
+      } else {
+        await enterVideoFullscreen()
+        return
       }
+      setIsFullscreen(true)
+    } catch {
+      try {
+        await enterVideoFullscreen()
+      } catch {}
     }
   }
 
   useEffect(() => {
     const update = () => setIsFullscreen(isCurrentlyFullscreen())
-    const events = [
-      'fullscreenchange',
-      'webkitfullscreenchange',
-      'mozfullscreenchange',
-      'MSFullscreenChange',
-    ]
+    const events = ['fullscreenchange', 'webkitfullscreenchange']
     events.forEach((ev) => document.addEventListener(ev, update))
 
     const video = videoRef.current

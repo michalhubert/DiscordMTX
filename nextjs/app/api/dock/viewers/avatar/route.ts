@@ -1,10 +1,9 @@
 import { isStreamerAuthorized } from '@/lib/authz'
 import { getViewerIdentity } from '@/lib/viewerIdentities'
-import { ponyKeyFor, rerollGuestAvatar } from '@/lib/guestIdentity'
+import { ponyKeyForSession, rerollGuestAvatar } from '@/lib/guestIdentity'
 import { refreshWatchGuest } from '@/lib/watchRoom'
 import { NextRequest } from 'next/server'
 
-// Gives a viewer a different picture of their pony.
 export async function POST(req: NextRequest) {
   if (!(await isStreamerAuthorized())) {
     return new Response('Unauthorized', { status: 401 })
@@ -15,16 +14,12 @@ export async function POST(req: NextRequest) {
     return new Response('Missing session ID', { status: 400 })
   }
 
-  const identity = getViewerIdentity(sessionId)
-  const ponyKey =
-    identity?.ip && identity.path
-      ? ponyKeyFor(identity.role, identity.name, identity.ip, identity.path)
-      : null
-  if (!identity?.path || !ponyKey) {
+  const guest = ponyKeyForSession(getViewerIdentity(sessionId))
+  if (!guest) {
     return new Response('Viewer has no pony identity', { status: 400 })
   }
 
-  const pony = await rerollGuestAvatar(identity.path, ponyKey)
-  await refreshWatchGuest(identity.path, ponyKey)
+  const pony = await rerollGuestAvatar(guest.path, guest.ponyKey)
+  await refreshWatchGuest(guest.path, guest.ponyKey)
   return Response.json({ image: pony.image })
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import Box from '@mui/material/Box'
 import IconButton from '@mui/material/IconButton'
 import { AnimatePresence, motion } from 'motion/react'
@@ -141,35 +141,28 @@ export default function PlayerClient({ path, whepUrl }: Props) {
     [isLive, sendReaction],
   )
 
-  // Via a ref, since these are recreated every render.
-  const playbackShortcuts = useRef({
-    toggleMute: () => {},
-    toggleFullscreen: () => {},
-  })
-  useEffect(() => {
-    playbackShortcuts.current = { toggleMute, toggleFullscreen }
-  })
+  const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return
+    const target = e.target as HTMLElement | null
+    if (target?.closest('input, textarea, [contenteditable="true"]')) return
 
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return
-      const target = e.target as HTMLElement | null
-      if (target?.closest('input, textarea, [contenteditable="true"]')) return
-
-      const index = Number(e.key) - 1
-      if (Number.isInteger(index) && index >= 0 && index < REACTIONS.length) {
-        react(REACTIONS[index])
-      } else if (e.key === 'v' || e.key === 'V') {
-        toggleShowViewers()
-      } else if (e.key === 'm' || e.key === 'M') {
-        playbackShortcuts.current.toggleMute()
-      } else if (e.key === 'f' || e.key === 'F') {
-        playbackShortcuts.current.toggleFullscreen()
-      }
+    const index = Number(e.key) - 1
+    if (Number.isInteger(index) && index >= 0 && index < REACTIONS.length) {
+      react(REACTIONS[index])
+    } else if (e.key === 'v' || e.key === 'V') {
+      toggleShowViewers()
+    } else if (e.key === 'm' || e.key === 'M') {
+      toggleMute()
+    } else if (e.key === 'f' || e.key === 'F') {
+      toggleFullscreen()
     }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [react, toggleShowViewers])
+  })
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => handleKeyDown(e)
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   const controlsHeld = useRef(false)
 

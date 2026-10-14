@@ -1,24 +1,58 @@
+function mediamtxHost(): string {
+  return process.env.MEDIAMTX_HOST ?? "discordmtx";
+}
 
 export function mediamtxApiBase(): string {
-  const host = process.env.MEDIAMTX_HOST ?? "discordmtx";
   const apiPort = process.env.MEDIAMTX_API_PORT ?? "9997";
-  return `http://${host}:${apiPort}`;
+  return `http://${mediamtxHost()}:${apiPort}`;
+}
+
+// WebRTC server (WHIP/WHEP endpoints), separate from the control API.
+export function mediamtxWebrtcBase(): string {
+  const port = process.env.MEDIAMTX_PORT ?? "8889";
+  return `http://${mediamtxHost()}:${port}`;
+}
+
+const SDP_RESPONSE_HEADERS = new Set(["content-type", "location", "link", "accept-patch", "id"]);
+
+export function forwardSdpHeaders(res: Response): Headers {
+  const headers = new Headers();
+  for (const [key, value] of res.headers.entries()) {
+    if (SDP_RESPONSE_HEADERS.has(key.toLowerCase())) headers.set(key, value);
+  }
+  return headers;
+}
+
+async function listItems<T>(endpoint: string): Promise<T[] | null> {
+  try {
+    const res = await fetch(`${mediamtxApiBase()}/v3/${endpoint}`, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.items || [];
+  } catch {
+    return null;
+  }
+}
+
+export type PathItem = { name: string; ready?: boolean; readyTime?: string; [key: string]: unknown };
+
+// null = MediaMTX unreachable or errored.
+export function listPaths(): Promise<PathItem[] | null> {
+  return listItems<PathItem>("paths/list");
 }
 
 export type WebrtcSessionItem = { id: string; path?: string; [key: string]: unknown };
 
+// null = MediaMTX unreachable or errored.
+export function fetchWebrtcSessions(): Promise<WebrtcSessionItem[] | null> {
+  return listItems<WebrtcSessionItem>("webrtcsessions/list");
+}
+
 export async function listWebrtcSessions(): Promise<WebrtcSessionItem[]> {
-  try {
-    const res = await fetch(`${mediamtxApiBase()}/v3/webrtcsessions/list`, {
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.items || [];
-  } catch {
-    return [];
-  }
+  return (await fetchWebrtcSessions()) ?? [];
 }
 
 // Ends a WebRTC session on MediaMTX. This alone only closes the current

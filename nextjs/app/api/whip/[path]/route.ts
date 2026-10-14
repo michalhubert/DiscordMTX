@@ -1,13 +1,8 @@
 import { isStreamerAuthorized } from '@/lib/authz'
 import { clearApprovedViewers } from '@/lib/accessRequests'
 import { createStreamSession, deleteStreamSession } from '@/lib/db'
+import { forwardSdpHeaders, mediamtxWebrtcBase } from '@/lib/mediamtx'
 import { NextRequest } from 'next/server'
-
-function mediamtxBase() {
-  const host = process.env.MEDIAMTX_HOST ?? 'discordmtx'
-  const port = process.env.MEDIAMTX_PORT ?? '8889'
-  return `http://${host}:${port}`
-}
 
 // Publishing is restricted to the "streamer" internal MediaMTX user (see
 // entrypoint.sh), so requests to MediaMTX must carry its credentials,
@@ -29,7 +24,7 @@ export async function POST(
   }
 
   const { path } = await params
-  const upstream = `${mediamtxBase()}/${path}/whip`
+  const upstream = `${mediamtxWebrtcBase()}/${path}/whip`
 
   createStreamSession(path)
 
@@ -48,23 +43,9 @@ export async function POST(
     body,
   })
 
-  const responseHeaders = new Headers()
-  for (const [key, value] of res.headers.entries()) {
-    const lower = key.toLowerCase()
-    if (
-      lower === 'content-type' ||
-      lower === 'location' ||
-      lower === 'link' ||
-      lower === 'accept-patch' ||
-      lower === 'id'
-    ) {
-      responseHeaders.set(key, value)
-    }
-  }
-
   return new Response(await res.text(), {
     status: res.status,
-    headers: responseHeaders,
+    headers: forwardSdpHeaders(res),
   })
 }
 
@@ -85,13 +66,10 @@ export async function DELETE(
     return new Response('Missing id', { status: 400 })
   }
 
-  const upstream = `${mediamtxBase()}/${path}/whip/${resourceId}`
+  const upstream = `${mediamtxWebrtcBase()}/${path}/whip/${resourceId}`
 
   deleteStreamSession(path)
 
-  // Once the stream ends, any previously approved viewers must re-request
-  // access on the next stream, instead of the stale approval silently
-  // carrying over.
   clearApprovedViewers(path)
 
   try {

@@ -2,41 +2,10 @@ import Database from "better-sqlite3";
 import { existsSync, mkdirSync, renameSync } from "fs";
 import { dirname, join } from "path";
 
-export type StreamSourceType = "monitor" | "window" | "browser";
-export type StreamVideoCodec = "auto" | "vp9" | "vp8" | "h264" | "av1";
-export type StreamContentHint = "none" | "motion" | "detail" | "text";
-export type StreamDegradationPreference = "balanced" | "maintain-framerate" | "maintain-resolution";
+import { DEFAULT_STREAM_SETTINGS, type StreamSettings } from "./streamSettings";
+
+export * from "./streamSettings";
 export type PathVisibility = "public" | "private";
-
-export type StreamSettings = {
-  path: string;
-  sourceType: StreamSourceType;
-  fixedResolution: boolean;
-  width: number;
-  height: number;
-  fps: number;
-  videoBitrateKbps: number;
-  videoCodec: StreamVideoCodec;
-  contentHint: StreamContentHint;
-  degradationPreference: StreamDegradationPreference;
-  includeAudio: boolean;
-  audioBitrateKbps: number;
-};
-
-export const DEFAULT_STREAM_SETTINGS: StreamSettings = {
-  path: "",
-  sourceType: "monitor",
-  fixedResolution: false,
-  width: 1920,
-  height: 1080,
-  fps: 30,
-  videoBitrateKbps: 6000,
-  videoCodec: "h264",
-  contentHint: "motion",
-  degradationPreference: "maintain-framerate",
-  includeAudio: true,
-  audioBitrateKbps: 128,
-};
 
 const DB_PATH = "/data/sqlite/discordmtx.db";
 // Where the database was when /data/sqlite itself was the volume, i.e. at the

@@ -2,34 +2,14 @@ import { redirect } from 'next/navigation'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import { auth } from '@/lib/auth'
+import { listPaths } from '@/lib/mediamtx'
 import { Satellite } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
-interface MediaMtxPathItem {
-  name?: string
-  ready?: boolean
-}
-
 async function getActiveStreamPath(): Promise<string | null> {
-  const host = process.env.MEDIAMTX_HOST ?? 'discordmtx'
-  const apiPort = process.env.MEDIAMTX_API_PORT ?? '9997'
-
-  try {
-    const res = await fetch(`http://${host}:${apiPort}/v3/paths/list`, {
-      headers: { Accept: 'application/json' },
-      cache: 'no-store',
-    })
-    if (!res.ok) {
-      return null
-    }
-
-    const data = (await res.json()) as { items?: MediaMtxPathItem[] }
-    const activePath = data.items?.find((item) => item.ready)
-    return activePath?.name ?? null
-  } catch {
-    return null
-  }
+  const paths = await listPaths()
+  return paths?.find((item) => item.ready)?.name ?? null
 }
 
 export default async function Home() {

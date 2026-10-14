@@ -12,6 +12,12 @@ import PlayerClient from './PlayerClient'
 type AccessStatus =
   'checking' | 'pending' | 'approved' | 'offline' | 'denied' | 'kicked'
 
+type Access = {
+  status: AccessStatus
+  denialInfo?: { deniedUntil: number; denialCount: number } | null
+  kickedUntil?: number
+}
+
 interface Props {
   path: string
   whepUrl: string
@@ -22,14 +28,10 @@ interface Props {
 // Gates access to a private stream: polls /api/streams/[path]/access until the
 // streamer approves the pending join request, then mounts the actual player.
 export default function JoinGate({ path, whepUrl, isPrivate, bypass }: Props) {
-  const [status, setStatus] = useState<AccessStatus>(
-    isPrivate && !bypass ? 'checking' : 'approved',
-  )
-  const [denialInfo, setDenialInfo] = useState<{
-    deniedUntil: number
-    denialCount: number
-  } | null>(null)
-  const [kickedUntil, setKickedUntil] = useState<number | null>(null)
+  const [access, setAccess] = useState<Access>({
+    status: isPrivate && !bypass ? 'checking' : 'approved',
+  })
+  const { status, denialInfo, kickedUntil } = access
   const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
@@ -48,31 +50,25 @@ export default function JoinGate({ path, whepUrl, isPrivate, bypass }: Props) {
         if (!res.ok) return
         const data = await res.json()
         if (!cancelled) {
-          if (data.status === 'approved') {
-            setStatus('approved')
-            setDenialInfo(null)
-            setKickedUntil(null)
-          } else if (data.status === 'offline') {
-            setStatus('offline')
-            setDenialInfo(null)
-            setKickedUntil(null)
-          } else if (data.status === 'denied') {
-            setStatus('denied')
-            setDenialInfo(data.denialInfo || null)
-            setKickedUntil(null)
-          } else if (data.status === 'kicked') {
-            setStatus('kicked')
-            setKickedUntil(
-              typeof data.kickedUntil === 'number'
-                ? data.kickedUntil
-                : Date.now(),
-            )
-          } else if (data.status === 'unauthorized') {
+          if (data.status === 'unauthorized') {
             window.location.href = '/login'
+          } else if (data.status === 'kicked') {
+            setAccess({
+              status: 'kicked',
+              kickedUntil:
+                typeof data.kickedUntil === 'number'
+                  ? data.kickedUntil
+                  : Date.now(),
+            })
+          } else if (data.status === 'denied') {
+            setAccess({ status: 'denied', denialInfo: data.denialInfo || null })
+          } else if (
+            data.status === 'approved' ||
+            data.status === 'offline'
+          ) {
+            setAccess({ status: data.status })
           } else {
-            setStatus('pending')
-            setDenialInfo(null)
-            setKickedUntil(null)
+            setAccess({ status: 'pending' })
           }
         }
       } catch (err) {
