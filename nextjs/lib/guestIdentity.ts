@@ -403,7 +403,6 @@ export async function rerollGuestAvatar(
   }
 }
 
-// Remaining cooldown before a guest can reroll again; 0 = now.
 export function guestRerollWaitMs(path: string, key: string): number {
   const at = rerolledAt.get(identityKey(path, key))
   return at ? Math.max(0, at + GUEST_REROLL_COOLDOWN_MS - Date.now()) : 0

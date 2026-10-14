@@ -1,4 +1,10 @@
+import Box from '@mui/material/Box'
+import ButtonBase from '@mui/material/ButtonBase'
+import Stack from '@mui/material/Stack'
+import Tooltip from '@mui/material/Tooltip'
+import Typography from '@mui/material/Typography'
 import { TriangleAlert, WifiOff } from 'lucide-react'
+import { popupSx } from '@/lib/theme'
 import {
   WARN_AT,
   type ConnectionQuality,
@@ -10,21 +16,11 @@ const DASH = '–'
 
 const qualityMeta: Record<
   ConnectionQuality,
-  { bars: number; bar: string; text: string; label: string }
+  { bars: number; color: string; label: string }
 > = {
-  good: {
-    bars: 4,
-    bar: 'bg-emerald-400',
-    text: 'text-emerald-400',
-    label: 'Excellent',
-  },
-  fair: {
-    bars: 2,
-    bar: 'bg-amber-400',
-    text: 'text-amber-400',
-    label: 'Unstable',
-  },
-  poor: { bars: 1, bar: 'bg-red-400', text: 'text-red-400', label: 'Poor' },
+  good: { bars: 4, color: 'success.light', label: 'Excellent' },
+  fair: { bars: 2, color: 'warning.light', label: 'Unstable' },
+  poor: { bars: 1, color: 'error.light', label: 'Poor' },
 }
 
 function bitrate(kbps: number): [string, string] {
@@ -34,19 +30,27 @@ function bitrate(kbps: number): [string, string] {
 }
 
 function SignalBars({ quality }: { quality: ConnectionQuality }) {
-  const { bars, bar } = qualityMeta[quality]
+  const { bars, color } = qualityMeta[quality]
   return (
-    <span className="flex h-4 items-end gap-[3px]" aria-hidden>
+    <Box
+      component="span"
+      aria-hidden
+      sx={{ display: 'flex', height: 16, alignItems: 'flex-end', gap: '3px' }}
+    >
       {[0.35, 0.55, 0.78, 1].map((height, i) => (
-        <span
+        <Box
+          component="span"
           key={i}
-          className={`w-[3px] rounded-full transition-colors ${
-            i < bars ? bar : 'bg-white/20'
-          }`}
-          style={{ height: `${height * 100}%` }}
+          sx={{
+            width: 3,
+            height: `${height * 100}%`,
+            borderRadius: 1,
+            bgcolor: i < bars ? color : 'rgba(255,255,255,0.2)',
+            transition: 'background-color 150ms',
+          }}
         />
       ))}
-    </span>
+    </Box>
   )
 }
 
@@ -62,15 +66,38 @@ function StatRow({
   warn?: boolean
 }) {
   return (
-    <div className="flex items-baseline justify-between gap-6 py-1">
-      <dt className="text-white/50">{label}</dt>
-      <dd
-        className={`font-medium tabular-nums ${warn ? 'text-amber-300' : 'text-white'}`}
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'baseline',
+        justifyContent: 'space-between',
+        gap: 3,
+        py: 0.5,
+      }}
+    >
+      <Box component="dt" sx={{ color: 'rgba(255,255,255,0.5)' }}>
+        {label}
+      </Box>
+      <Box
+        component="dd"
+        sx={{
+          m: 0,
+          fontWeight: 500,
+          fontVariantNumeric: 'tabular-nums',
+          color: warn ? 'warning.light' : 'common.white',
+        }}
       >
         {value ?? DASH}
-        {value !== null && <span className="ml-1 text-white/40">{unit}</span>}
-      </dd>
-    </div>
+        {value !== null && (
+          <Box
+            component="span"
+            sx={{ ml: 0.5, color: 'rgba(255,255,255,0.4)' }}
+          >
+            {unit}
+          </Box>
+        )}
+      </Box>
+    </Box>
   )
 }
 
@@ -83,95 +110,164 @@ interface Props {
 const round = (value: number | null | undefined) =>
   value == null ? null : Math.round(value).toString()
 
-// Signal bars + bitrate; hovering/focusing opens the stats card.
 export default function ConnectionIndicator({ quality, stats, warnings }: Props) {
   const meta = qualityMeta[quality]
   const [rate, rateUnit] = stats ? bitrate(stats.bitrateKbps) : [DASH, '']
   const critical = warnings.some((w) => w.severity === 'critical')
 
+  const card = (
+    <Box sx={{ fontSize: 12 }}>
+      {warnings.length > 0 && (
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={[
+            {
+              mb: 1,
+              alignItems: 'flex-start',
+              borderRadius: 2,
+              border: 1,
+              px: 1,
+              py: 0.75,
+            },
+            critical
+              ? {
+                  borderColor: 'rgba(248,113,113,0.3)',
+                  bgcolor: 'rgba(69,10,10,0.75)',
+                  color: '#fee2e2',
+                }
+              : {
+                  borderColor: 'rgba(251,191,36,0.3)',
+                  bgcolor: 'rgba(69,26,3,0.7)',
+                  color: '#fef3c7',
+                },
+          ]}
+        >
+          <Box sx={{ mt: '2px', display: 'flex', flexShrink: 0 }}>
+            {warnings[0].id === 'offline' ? (
+              <WifiOff size={14} />
+            ) : (
+              <TriangleAlert size={14} />
+            )}
+          </Box>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography sx={{ fontSize: 12, fontWeight: 500, lineHeight: 1.25 }}>
+              {warnings[0].message}
+            </Typography>
+            {warnings.length > 1 && (
+              <Typography sx={{ mt: 0.25, fontSize: 10, opacity: 0.75 }}>
+                +{warnings.length - 1} more
+              </Typography>
+            )}
+          </Box>
+        </Stack>
+      )}
+      <Box
+        sx={{
+          mb: 1,
+          pb: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          borderBottom: '1px solid rgba(255,255,255,0.1)',
+        }}
+      >
+        <Box component="span" sx={{ fontWeight: 600 }}>
+          Connection
+        </Box>
+        <Box
+          component="span"
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 0.75,
+            fontWeight: 500,
+            color: meta.color,
+          }}
+        >
+          <Box
+            component="span"
+            sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: meta.color }}
+          />
+          {meta.label}
+        </Box>
+      </Box>
+      <Box component="dl" sx={{ m: 0 }}>
+        <StatRow label="Bitrate" value={stats ? rate : null} unit={rateUnit} />
+        <StatRow label="Frame rate" value={round(stats?.fps)} unit="fps" />
+        <StatRow
+          label="Latency (RTT)"
+          value={round(stats?.rttMs)}
+          unit="ms"
+          warn={(stats?.rttMs ?? 0) >= WARN_AT.rttMs}
+        />
+        <StatRow
+          label="Jitter"
+          value={round(stats?.jitterMs)}
+          unit="ms"
+          warn={(stats?.jitterMs ?? 0) >= WARN_AT.jitterMs}
+        />
+        <StatRow
+          label="Packet loss"
+          value={stats?.packetLossPct.toFixed(1) ?? null}
+          unit="%"
+          warn={(stats?.packetLossPct ?? 0) >= WARN_AT.packetLossPct}
+        />
+        <StatRow
+          label="Dropped frames"
+          value={stats?.droppedFramesPct.toFixed(1) ?? null}
+          unit="%"
+          warn={(stats?.droppedFramesPct ?? 0) >= WARN_AT.droppedFramesPct}
+        />
+      </Box>
+    </Box>
+  )
+
   return (
-    <div className="group/stats relative flex">
-      <button
-        type="button"
+    <Tooltip
+      title={card}
+      placement="top-start"
+      slotProps={{
+        tooltip: {
+          sx: [
+            popupSx,
+            { width: 256, maxWidth: 'none', p: 1.5, borderRadius: 3 },
+          ],
+        },
+      }}
+    >
+      <ButtonBase
         aria-label={`Connection ${meta.label.toLowerCase()} - show stats`}
-        className="flex h-10 items-center gap-2.5 rounded-full px-3 text-white/90 transition-colors hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+        sx={{
+          height: 40,
+          gap: 1.25,
+          px: 1.5,
+          borderRadius: 5,
+          color: 'rgba(255,255,255,0.9)',
+          transition: 'background-color 150ms',
+          '&:hover, &.Mui-focusVisible': { bgcolor: 'rgba(255,255,255,0.1)' },
+        }}
       >
         <SignalBars quality={quality} />
         {/* Fixed width so changing values don't shift neighbours */}
-        <span className="hidden w-[4.75rem] text-left text-xs tabular-nums md:block">
-          <span className="font-semibold">{rate}</span>
-          <span className="ml-1 text-white/50">{rateUnit}</span>
-        </span>
-      </button>
-
-      <div className="pointer-events-none absolute bottom-full left-0 mb-3 w-64 translate-y-1 rounded-xl bg-neutral-900/95 p-3 text-xs opacity-0 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl transition-all duration-150 group-hover/stats:translate-y-0 group-hover/stats:opacity-100 group-has-[:focus-visible]/stats:translate-y-0 group-has-[:focus-visible]/stats:opacity-100">
-        {warnings.length > 0 && (
-          <div
-            className={`mb-2 flex items-start gap-2 rounded-lg border px-2 py-1.5 ${
-              critical
-                ? 'border-red-400/30 bg-red-950/75 text-red-100'
-                : 'border-amber-400/30 bg-amber-950/70 text-amber-100'
-            }`}
-          >
-            <span className="mt-0.5 shrink-0">
-              {warnings[0].id === 'offline' ? (
-                <WifiOff className="h-3.5 w-3.5" />
-              ) : (
-                <TriangleAlert className="h-3.5 w-3.5" />
-              )}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="font-medium leading-tight">{warnings[0].message}</p>
-              {warnings.length > 1 && (
-                <p className="mt-0.5 text-[10px] opacity-75">
-                  +{warnings.length - 1} more
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-        <div className="mb-2 flex items-center justify-between border-b border-white/10 pb-2">
-          <span className="font-semibold text-white">Connection</span>
-          <span
-            className={`flex items-center gap-1.5 font-medium ${meta.text}`}
-          >
-            <span className={`h-1.5 w-1.5 rounded-full ${meta.bar}`} />
-            {meta.label}
-          </span>
-        </div>
-        <dl>
-          <StatRow
-            label="Bitrate"
-            value={stats ? rate : null}
-            unit={rateUnit}
-          />
-          <StatRow label="Frame rate" value={round(stats?.fps)} unit="fps" />
-          <StatRow
-            label="Latency (RTT)"
-            value={round(stats?.rttMs)}
-            unit="ms"
-            warn={(stats?.rttMs ?? 0) >= WARN_AT.rttMs}
-          />
-          <StatRow
-            label="Jitter"
-            value={round(stats?.jitterMs)}
-            unit="ms"
-            warn={(stats?.jitterMs ?? 0) >= WARN_AT.jitterMs}
-          />
-          <StatRow
-            label="Packet loss"
-            value={stats?.packetLossPct.toFixed(1) ?? null}
-            unit="%"
-            warn={(stats?.packetLossPct ?? 0) >= WARN_AT.packetLossPct}
-          />
-          <StatRow
-            label="Dropped frames"
-            value={stats?.droppedFramesPct.toFixed(1) ?? null}
-            unit="%"
-            warn={(stats?.droppedFramesPct ?? 0) >= WARN_AT.droppedFramesPct}
-          />
-        </dl>
-      </div>
-    </div>
+        <Box
+          component="span"
+          sx={{
+            display: { xs: 'none', md: 'block' },
+            width: '4.75rem',
+            textAlign: 'left',
+            fontSize: 12,
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          <Box component="span" sx={{ fontWeight: 600 }}>
+            {rate}
+          </Box>
+          <Box component="span" sx={{ ml: 0.5, color: 'rgba(255,255,255,0.5)' }}>
+            {rateUnit}
+          </Box>
+        </Box>
+      </ButtonBase>
+    </Tooltip>
   )
 }

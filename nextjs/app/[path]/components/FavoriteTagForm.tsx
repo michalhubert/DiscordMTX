@@ -1,8 +1,15 @@
 'use client'
 
 import { useState } from 'react'
+import Box from '@mui/material/Box'
+import ButtonBase from '@mui/material/ButtonBase'
+import CircularProgress from '@mui/material/CircularProgress'
+import IconButton from '@mui/material/IconButton'
+import InputBase from '@mui/material/InputBase'
+import Typography from '@mui/material/Typography'
 import { motion } from 'motion/react'
-import { Check, Loader2 } from 'lucide-react'
+import { Check } from 'lucide-react'
+import { accentAlpha } from '@/lib/theme'
 import type { PonyChangeResult } from '../hooks/useWatchRoom'
 
 interface Props {
@@ -53,17 +60,29 @@ export default function FavoriteTagForm({
         const tag = draft.trim()
         void submit(tag ? tag : null)
       }}
-      className="overflow-hidden"
+      style={{ overflow: 'hidden' }}
     >
-      <div className="mt-1.5 flex flex-col gap-1.5 border-t border-white/10 px-1 pt-2">
-        <label
+      <Box
+        sx={{
+          mt: 0.75,
+          pt: 1,
+          px: 0.5,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 0.75,
+          borderTop: '1px solid rgba(255,255,255,0.1)',
+          fontSize: 11,
+        }}
+      >
+        <Box
+          component="label"
           htmlFor="favorite-tag"
-          className="text-[11px] font-medium text-white/60"
+          sx={{ fontWeight: 500, color: 'rgba(255,255,255,0.6)' }}
         >
           Favourite tag for your pictures
-        </label>
-        <div className="flex gap-1">
-          <input
+        </Box>
+        <Box sx={{ display: 'flex', gap: 0.5 }}>
+          <InputBase
             id="favorite-tag"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -71,48 +90,79 @@ export default function FavoriteTagForm({
               if (e.key === 'Escape') onClose()
             }}
             placeholder="e.g. cute"
-            maxLength={60}
             autoFocus
             autoComplete="off"
-            spellCheck={false}
-            className="min-w-0 flex-1 select-text rounded bg-white/10 px-2 py-1 text-xs text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-white/40"
+            slotProps={{ input: { maxLength: 60, spellCheck: false } }}
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              userSelect: 'text',
+              borderRadius: 1,
+              bgcolor: 'rgba(255,255,255,0.1)',
+              px: 1,
+              fontSize: 12,
+              color: 'common.white',
+              '&.Mui-focused': { boxShadow: `0 0 0 2px ${accentAlpha(0.7)}` },
+              '& input': { py: 0.5 },
+            }}
           />
-          <button
+          <IconButton
             type="submit"
+            size="small"
             disabled={disabled}
             aria-label="Save favourite tag"
             title="Save favourite tag"
-            className="rounded bg-white/10 p-1.5 transition-colors hover:bg-white/20 disabled:opacity-40 disabled:hover:bg-white/10"
+            sx={{
+              borderRadius: 1,
+              bgcolor: 'rgba(255,255,255,0.1)',
+              color: 'common.white',
+              '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' },
+            }}
           >
             {busy ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <CircularProgress size={14} color="inherit" />
             ) : (
-              <Check className="h-3.5 w-3.5" />
+              <Check size={14} />
             )}
-          </button>
-        </div>
+          </IconButton>
+        </Box>
         {message && (
-          <p className="text-[11px] leading-snug text-amber-200/90">
+          <Typography sx={{ fontSize: 11, lineHeight: 1.35, color: 'warning.light' }}>
             {message}
-          </p>
+          </Typography>
         )}
-        <div className="flex items-center justify-between gap-2 text-[11px] text-white/40">
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 1,
+            color: 'rgba(255,255,255,0.4)',
+          }}
+        >
           <span>{cooldownS > 0 ? `Can change in ${cooldownS}s` : ''}</span>
           {favoriteTag && (
-            <button
-              type="button"
+            <ButtonBase
               disabled={disabled}
               onClick={() => {
                 setDraft('')
                 void submit(null)
               }}
-              className="rounded px-1 text-white/60 underline-offset-2 hover:text-white hover:underline disabled:opacity-40 disabled:hover:no-underline"
+              sx={{
+                px: 0.5,
+                borderRadius: 0.5,
+                fontSize: 11,
+                color: 'rgba(255,255,255,0.6)',
+                textUnderlineOffset: 2,
+                '&:hover': { color: 'common.white', textDecoration: 'underline' },
+                '&.Mui-disabled': { opacity: 0.4 },
+              }}
             >
               Remove &ldquo;{favoriteTag}&rdquo;
-            </button>
+            </ButtonBase>
           )}
-        </div>
-      </div>
+        </Box>
+      </Box>
     </motion.form>
   )
 }

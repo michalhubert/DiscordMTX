@@ -1,5 +1,6 @@
 'use client'
 
+import Box from '@mui/material/Box'
 import { AnimatePresence, motion } from 'motion/react'
 import { REACTIONS, type WatchReaction } from '@/lib/watchRoomShared'
 import { REACTION_BUTTON_PITCH_PX } from './ReactionBar'
@@ -26,16 +27,23 @@ function buttonOffset(emoji: WatchReaction['emoji']): number {
 
 export default function FloatingReactions({ reactions }: Props) {
   return (
-    <div
-      className="pointer-events-none absolute inset-0 z-10 overflow-hidden"
+    <Box
       aria-hidden
+      sx={{
+        pointerEvents: 'none',
+        position: 'absolute',
+        inset: 0,
+        zIndex: 10,
+        overflow: 'hidden',
+      }}
     >
       <AnimatePresence>
         {reactions.map((r) => (
           <motion.div
             key={r.id}
-            className="absolute bottom-14"
             style={{
+              position: 'absolute',
+              bottom: 56,
               left: `calc(50% + ${buttonOffset(r.emoji) + r.jitter}px)`,
               // Scale from the bottom so it grows out of its button.
               originX: 0,
@@ -58,22 +66,38 @@ export default function FloatingReactions({ reactions }: Props) {
             }}
           >
             {/* Centring lives here since motion owns the outer transform */}
-            <div className="relative -translate-x-1/2">
-              <span className="block text-4xl leading-none drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)]">
-                {r.emoji}
-              </span>
-              <span
-                title={r.isSelf ? 'You' : r.from.name}
-                className={`absolute -bottom-1 -right-2 rounded-full shadow-md ${
-                  r.isSelf ? 'ring-2 ring-white' : 'ring-2 ring-black/60'
-                }`}
+            <Box sx={{ position: 'relative', transform: 'translateX(-50%)' }}>
+              <Box
+                component="span"
+                sx={{
+                  display: 'block',
+                  fontSize: 36,
+                  lineHeight: 1,
+                  filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.6))',
+                }}
               >
-                <ViewerAvatar viewer={r.from} className="h-[18px] w-[18px]" />
-              </span>
-            </div>
+                {r.emoji}
+              </Box>
+              <Box
+                component="span"
+                title={r.isSelf ? 'You' : r.from.name}
+                sx={{
+                  position: 'absolute',
+                  bottom: -4,
+                  right: -8,
+                  display: 'flex',
+                  borderRadius: '50%',
+                  boxShadow: r.isSelf
+                    ? '0 0 0 2px #fff'
+                    : '0 0 0 2px rgba(0,0,0,0.6)',
+                }}
+              >
+                <ViewerAvatar viewer={r.from} size={18} />
+              </Box>
+            </Box>
           </motion.div>
         ))}
       </AnimatePresence>
-    </div>
+    </Box>
   )
 }

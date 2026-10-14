@@ -1,6 +1,3 @@
-// Small shared helpers for talking to the MediaMTX control API, used by the
-// dock (viewer list / kick) and by password rotation to forcibly drop
-// currently-connected viewer-password sessions.
 
 export function mediamtxApiBase(): string {
   const host = process.env.MEDIAMTX_HOST ?? "discordmtx";

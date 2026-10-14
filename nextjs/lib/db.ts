@@ -347,7 +347,6 @@ export function deleteDiscordWebhookMessageId(path: string): void {
     .run(path);
 }
 
-// See lib/guestIdentity.ts.
 export type GuestIdentityRow = {
   path: string;
   ip: string;

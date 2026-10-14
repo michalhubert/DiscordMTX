@@ -2,6 +2,7 @@ import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { getPathVisibility } from '@/lib/db'
 import { isViewerPasswordStale, type SessionUser } from '@/lib/authz'
+import Box from '@mui/material/Box'
 import JoinGate from './JoinGate'
 
 export default async function StreamPage({
@@ -26,13 +27,16 @@ export default async function StreamPage({
   const role = user.role
 
   return (
-    <main className="h-screen w-screen bg-black overflow-hidden">
+    <Box
+      component="main"
+      sx={{ height: '100vh', width: '100vw', bgcolor: 'common.black', overflow: 'hidden' }}
+    >
       <JoinGate
         path={path}
         whepUrl={whepUrl}
         isPrivate={isPrivate}
         bypass={role === 'streamer'}
       />
-    </main>
+    </Box>
   )
 }

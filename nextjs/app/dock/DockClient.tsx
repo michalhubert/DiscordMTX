@@ -1,7 +1,17 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import AvatarPreview from '@/app/components/AvatarPreview'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import Avatar from '@mui/material/Avatar'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import Chip from '@mui/material/Chip'
+import CircularProgress from '@mui/material/CircularProgress'
+import IconButton from '@mui/material/IconButton'
+import Link from '@mui/material/Link'
+import Paper from '@mui/material/Paper'
+import Stack from '@mui/material/Stack'
+import type { SxProps, Theme } from '@mui/material/styles'
+import Typography from '@mui/material/Typography'
 import {
   Bell,
   BellOff,
@@ -10,10 +20,12 @@ import {
   Globe,
   HardDrive,
   Lock,
-  Loader2,
   RefreshCw,
   X,
 } from 'lucide-react'
+import AccentPicker from '@/app/components/AccentPicker'
+import AvatarPreview from '@/app/components/AvatarPreview'
+import { accentAlpha } from '@/lib/theme'
 
 type WebrtcSession = {
   id: string
@@ -78,7 +90,7 @@ function formatDuration(startTime?: string) {
   return `${hrs}h ${mins % 60}m`
 }
 
-export default function DockClient() {
+export default function DockClient({ embedded = false }: { embedded?: boolean }) {
   const [soundEnabled, setSoundEnabled] = useState(true)
   const [status, setStatus] = useState<
     'checking' | 'live' | 'offline' | 'error'
@@ -349,7 +361,6 @@ export default function DockClient() {
     }
   }, [currentPath])
 
-  // Populates the path list (for visibility toggles) from MediaMTX's configured + runtime paths.
   useEffect(() => {
     let cancelled = false
 
@@ -572,341 +583,552 @@ export default function DockClient() {
           : 'Checking'
 
   return (
-    <div className="min-h-screen bg-[#121216] text-[#e2e8f0] text-[13px] leading-[1.4] p-3 select-none font-sans">
-      <div className="flex items-center justify-between pb-2.5 border-b border-[#2c2c38] mb-3">
-        <div className="flex items-center gap-2 font-bold text-sm tracking-wide">
-          <span>DiscordMTX</span>
-          <div
-            className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full uppercase ${
-              status === 'live'
-                ? 'bg-green-500/15 text-green-500'
-                : 'bg-gray-800 text-gray-400'
-            }`}
-          >
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${
-                status === 'live'
-                  ? 'bg-green-500 shadow-[0_0_6px_#22c55e]'
-                  : 'bg-gray-400'
-              }`}
-            />
-            <span>{statusLabel}</span>
-          </div>
-        </div>
-        <div className="flex gap-1.5">
-          <button
+    <Box
+      sx={{
+        minHeight: embedded ? undefined : '100vh',
+        bgcolor: 'background.paper',
+        fontSize: 13,
+        lineHeight: 1.4,
+        p: 1.5,
+        userSelect: 'none',
+      }}
+    >
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          pb: 1.25,
+          mb: 1.5,
+          borderBottom: 1,
+          borderColor: 'divider',
+        }}
+      >
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          <Typography sx={{ fontWeight: 700, fontSize: 14, letterSpacing: '0.02em' }}>
+            DiscordMTX
+          </Typography>
+          <StatusPill live={status === 'live'} label={statusLabel} />
+        </Stack>
+        <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+          <AccentPicker size="small" sx={{ color: 'text.secondary' }} />
+          <Button
+            size="small"
+            variant={soundEnabled ? 'outlined' : 'contained'}
+            color={soundEnabled ? 'inherit' : 'primary'}
             onClick={() => setSoundEnabled((s) => !s)}
             title="Toggle audio chime on viewer join/leave and stream start/end"
-            className={`bg-[#1b1b22] border border-[#2c2c38] text-gray-400 px-2 py-1 rounded-md text-[11px] hover:bg-[#2c2c38] hover:text-white transition-colors inline-flex items-center gap-1 ${
-              !soundEnabled
-                ? 'bg-indigo-500/20 border-indigo-500 text-indigo-400'
-                : ''
-            }`}
+            startIcon={soundEnabled ? <Bell size={14} /> : <BellOff size={14} />}
+            sx={{
+              fontSize: 11,
+              py: 0.25,
+              ...(soundEnabled && { color: 'text.secondary', borderColor: 'divider' }),
+            }}
           >
-            {soundEnabled ? (
-              <Bell className="w-3.5 h-3.5" />
-            ) : (
-              <BellOff className="w-3.5 h-3.5" />
-            )}
-            <span>{soundEnabled ? 'Sound On' : 'Muted'}</span>
-          </button>
-        </div>
-      </div>
+            {soundEnabled ? 'Sound On' : 'Muted'}
+          </Button>
+        </Stack>
+      </Box>
 
-      <div className="flex justify-between items-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide my-3">
-        <span>
-          Current Viewer Password{currentPath ? ` (/${currentPath})` : ''}
-        </span>
-      </div>
-      <div className="bg-[#1b1b22] border border-[#2c2c38] rounded-lg px-3 py-2 flex items-center justify-between gap-2 mb-3">
-        <span className="font-mono text-sm text-amber-400 truncate">
-          {!currentPath
-            ? 'no active stream'
-            : (viewerPassword ?? 'unavailable')}
-        </span>
-        <div className="flex items-center gap-1 shrink-0">
-          <button
+      <SectionHeader
+        title={`Current Viewer Password${currentPath ? ` (/${currentPath})` : ''}`}
+      />
+      <Card
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 1,
+          px: 1.5,
+          py: 1,
+          mb: 1.5,
+        }}
+      >
+        <Typography
+          noWrap
+          sx={{ fontFamily: 'monospace', fontSize: 14, color: 'warning.light' }}
+        >
+          {!currentPath ? 'no active stream' : (viewerPassword ?? 'unavailable')}
+        </Typography>
+        <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
+          <IconButton
+            size="small"
             onClick={rotatePassword}
             disabled={!currentPath}
             title="Rotate viewer password for the currently streaming path"
-            className="bg-[#2c2c38] border border-[#3a3a48] text-gray-200 px-2 py-1 rounded-md text-[11px] hover:bg-amber-500/30 hover:text-white transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+            sx={smallButtonSx}
           >
-            <RefreshCw className="w-3 h-3" />
-          </button>
-          <button
+            <RefreshCw size={12} />
+          </IconButton>
+          <Button
+            size="small"
             onClick={copyPassword}
             disabled={!viewerPassword}
             title="Copy viewer password"
-            className="bg-[#2c2c38] border border-[#3a3a48] text-gray-200 px-2 py-1 rounded-md text-[11px] hover:bg-indigo-500/30 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+            sx={smallButtonSx}
           >
             {copied ? 'Copied!' : 'Copy'}
-          </button>
-        </div>
-      </div>
+          </Button>
+        </Stack>
+      </Card>
 
-      <div className="mb-3">
-        <div className="bg-[#1b1b22] border border-[#2c2c38] rounded-lg px-3 py-2">
-          <div className="text-[11px] text-gray-400 uppercase mb-0.5">
-            Active Viewers
-          </div>
-          <div className="text-xl font-bold text-green-500">{viewerCount}</div>
-        </div>
-      </div>
+      <Card sx={{ px: 1.5, py: 1, mb: 1.5 }}>
+        <Typography variant="overline" color="text.secondary" sx={{ fontSize: 11 }}>
+          Active Viewers
+        </Typography>
+        <Typography sx={{ fontSize: 20, fontWeight: 700, color: 'success.main', lineHeight: 1.2 }}>
+          {viewerCount}
+        </Typography>
+      </Card>
 
-      <div className="flex justify-between items-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide my-3">
-        <span>Stream Access</span>
-      </div>
-      <ul className="flex flex-col gap-1.5 mb-3 list-none">
+      <SectionHeader title="Stream Access" />
+      <List>
         {availablePaths.length === 0 ? (
-          <li className="p-4 text-center text-gray-400 italic bg-[#1b1b22]/50 rounded-md border border-dashed border-[#2c2c38]">
-            No paths configured
-          </li>
+          <EmptyRow>No paths configured</EmptyRow>
         ) : (
           availablePaths.map((p) => {
             const visibility = visibilities[p] ?? 'private'
             const isPrivate = visibility === 'private'
             return (
-              <li
-                key={p}
-                className="bg-[#1b1b22] border border-[#2c2c38] rounded-md px-2.5 py-2 flex justify-between items-center text-xs"
-              >
-                <span className="font-mono text-sky-400">/{p}</span>
-                <button
+              <Row key={p}>
+                <Typography sx={{ fontFamily: 'monospace', fontSize: 12, color: 'primary.light' }}>
+                  /{p}
+                </Typography>
+                <Chip
+                  size="small"
+                  clickable
                   onClick={() => toggleVisibility(p)}
                   disabled={busyPath === p}
                   title="Toggle between public (anyone can join) and private (streamer approves each viewer)"
-                  className={`text-[11px] font-semibold px-2 py-1 rounded-full uppercase transition-colors disabled:opacity-40 ${
-                    isPrivate
-                      ? 'bg-amber-500/15 text-amber-400'
-                      : 'bg-green-500/15 text-green-500'
-                  }`}
-                >
-                  <span className="inline-flex items-center gap-1">
-                    {isPrivate ? (
-                      <Lock className="w-3 h-3" />
-                    ) : (
-                      <Globe className="w-3 h-3" />
-                    )}
-                    {isPrivate ? 'Private' : 'Public'}
-                  </span>
-                </button>
-              </li>
+                  icon={isPrivate ? <Lock size={12} /> : <Globe size={12} />}
+                  label={isPrivate ? 'Private' : 'Public'}
+                  sx={tintedChipSx(isPrivate ? 'warning' : 'success')}
+                />
+              </Row>
             )
           })
         )}
-      </ul>
+      </List>
 
-      <div className="flex justify-between items-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide my-3">
-        <span>Pending Requests</span>
-        {pendingRequests.length > 0 && (
-          <span className="text-[10px] font-bold text-amber-400">
-            {pendingRequests.length}
-          </span>
-        )}
-      </div>
-      <ul className="flex flex-col gap-1.5 max-h-[220px] overflow-y-auto list-none mb-3">
+      <SectionHeader
+        title="Pending Requests"
+        extra={
+          pendingRequests.length > 0 && (
+            <Box component="span" sx={{ fontSize: 10, fontWeight: 700, color: 'warning.light' }}>
+              {pendingRequests.length}
+            </Box>
+          )
+        }
+      />
+      <List scroll>
         {pendingRequests.length === 0 ? (
-          <li className="p-4 text-center text-gray-400 italic bg-[#1b1b22]/50 rounded-md border border-dashed border-[#2c2c38]">
-            No pending requests
-          </li>
+          <EmptyRow>No pending requests</EmptyRow>
         ) : (
-          pendingRequests.map((req) => (
-            <li
-              key={`${req.path}:${req.ip}:${req.role ?? 'guest'}`}
-              className="bg-[#1b1b22] border border-[#2c2c38] rounded-md px-2.5 py-2 flex justify-between items-center text-xs gap-2"
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                {req.image ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={req.image}
-                    alt=""
-                    className="w-6 h-6 rounded-full shrink-0"
-                  />
-                ) : (
-                  <div className="w-6 h-6 rounded-full bg-[#2c2c38] shrink-0 flex items-center justify-center text-[10px] font-semibold text-gray-400">
-                    {(req.name || req.ip).charAt(0).toUpperCase()}
-                  </div>
-                )}
-                <div className="flex flex-col gap-0.5 min-w-0">
-                  <span className="font-semibold text-sky-400 truncate">
-                    {req.name ?? req.ip}
-                  </span>
-                  <span className="text-[10px] text-gray-400">
-                    wants to join <strong>/{req.path}</strong>
-                  </span>
-                </div>
-              </div>
-              <div className="flex gap-1.5 shrink-0">
-                <button
-                  onClick={() => approveRequest(req)}
-                  disabled={
-                    busyRequestKey ===
-                    `${req.path}:${req.ip}:${req.role ?? 'guest'}`
-                  }
-                  className="bg-green-500/20 text-green-500 px-2 py-1 rounded-md text-[11px] font-semibold hover:bg-green-500/30 transition-colors disabled:opacity-40"
-                >
-                  Approve
-                </button>
-                <button
-                  onClick={() => denyRequest(req)}
-                  disabled={
-                    busyRequestKey ===
-                    `${req.path}:${req.ip}:${req.role ?? 'guest'}`
-                  }
-                  className="bg-red-500/20 text-red-500 px-2 py-1 rounded-md text-[11px] font-semibold hover:bg-red-500/30 transition-colors disabled:opacity-40"
-                >
-                  Deny
-                </button>
-              </div>
-            </li>
-          ))
+          pendingRequests.map((req) => {
+            const requestKey = `${req.path}:${req.ip}:${req.role ?? 'guest'}`
+            return (
+              <Row key={requestKey}>
+                <Stack direction="row" spacing={1} sx={{ alignItems: 'center', minWidth: 0 }}>
+                  <SmallAvatar image={req.image} fallback={req.name || req.ip} />
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography noWrap sx={{ fontSize: 12, fontWeight: 600, color: 'primary.light' }}>
+                      {req.name ?? req.ip}
+                    </Typography>
+                    <Typography sx={{ fontSize: 10, color: 'text.secondary' }}>
+                      wants to join <strong>/{req.path}</strong>
+                    </Typography>
+                  </Box>
+                </Stack>
+                <Stack direction="row" spacing={0.75} sx={{ flexShrink: 0 }}>
+                  <Button
+                    size="small"
+                    onClick={() => approveRequest(req)}
+                    disabled={busyRequestKey === requestKey}
+                    sx={tintedButtonSx('success')}
+                  >
+                    Approve
+                  </Button>
+                  <Button
+                    size="small"
+                    onClick={() => denyRequest(req)}
+                    disabled={busyRequestKey === requestKey}
+                    sx={tintedButtonSx('error')}
+                  >
+                    Deny
+                  </Button>
+                </Stack>
+              </Row>
+            )
+          })
         )}
-      </ul>
+      </List>
 
-      <div className="flex justify-between items-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide my-3">
-        <span>Current Viewers</span>
-        <span className="text-[10px] opacity-70">polling</span>
-      </div>
-      <ul className="flex flex-col gap-1.5 max-h-[220px] overflow-y-auto list-none">
+      <SectionHeader
+        title="Current Viewers"
+        extra={
+          <Box component="span" sx={{ fontSize: 10, opacity: 0.7, textTransform: 'none' }}>
+            polling
+          </Box>
+        }
+      />
+      <List scroll>
         {readers.length === 0 ? (
-          <li className="p-4 text-center text-gray-400 italic bg-[#1b1b22]/50 rounded-md border border-dashed border-[#2c2c38]">
-            No viewers connected
-          </li>
+          <EmptyRow>No viewers connected</EmptyRow>
         ) : (
           readers.map((r) => (
-            <li
-              key={r.id}
-              className="bg-[#1b1b22] border border-[#2c2c38] rounded-md px-2.5 py-2 flex justify-between items-center text-xs"
-            >
-              <div className="flex items-center gap-2">
+            <Row key={r.id}>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', minWidth: 0 }}>
                 {r.viewerImage ? (
                   <AvatarPreview
                     image={r.viewerImage}
                     name={r.viewerName || r.viewerIp || 'Guest'}
-                    className="flex shrink-0 cursor-zoom-in"
+                    sx={{ display: 'flex', flexShrink: 0, cursor: 'zoom-in' }}
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={r.viewerImage}
-                      alt=""
-                      referrerPolicy="no-referrer"
-                      className="w-6 h-6 rounded-full shrink-0 object-cover"
-                    />
+                    <SmallAvatar image={r.viewerImage} fallback="G" />
                   </AvatarPreview>
                 ) : (
-                  <div className="w-6 h-6 rounded-full bg-[#2c2c38] shrink-0 flex items-center justify-center text-[10px] font-semibold text-gray-400">
-                    {(r.viewerName || 'G').charAt(0).toUpperCase()}
-                  </div>
+                  <SmallAvatar image={null} fallback={r.viewerName || 'G'} />
                 )}
-                <div className="flex flex-col gap-0.5">
-                  <span className="font-semibold text-sky-400">
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography noWrap sx={{ fontSize: 12, fontWeight: 600, color: 'primary.light' }}>
                     {r.viewerName || r.viewerIp || 'Guest'}
-                  </span>
+                  </Typography>
                   {r.viewerDiscordName && (
-                    <span className="inline-flex items-center gap-1 text-[10px] text-indigo-300">
+                    <Stack
+                      direction="row"
+                      spacing={0.5}
+                      sx={{ alignItems: 'center', fontSize: 10, color: 'discord.light' }}
+                    >
                       {r.viewerDiscordImage && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
+                        <Avatar
                           src={r.viewerDiscordImage}
                           alt=""
-                          referrerPolicy="no-referrer"
-                          className="w-3 h-3 rounded-full"
+                          slotProps={{ img: { referrerPolicy: 'no-referrer' } }}
+                          sx={{ width: 12, height: 12 }}
                         />
                       )}
-                      Discord: {r.viewerDiscordName}
-                    </span>
+                      <span>Discord: {r.viewerDiscordName}</span>
+                    </Stack>
                   )}
-                  <span className="text-[10px] text-gray-400">
+                  <Typography sx={{ fontSize: 10, color: 'text.secondary' }}>
                     {(r.viewerRole !== 'discord' || r.viewerHasPony) &&
                       r.viewerIp && <>{r.viewerIp} · </>}
                     Path: <strong>{r.path || 'default'}</strong>
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="text-right text-[11px] text-gray-400 flex flex-col gap-0.5">
-                  <span className="inline-flex items-center justify-end gap-1">
-                    <Clock className="w-3 h-3" /> {formatDuration(r.created)}
-                  </span>
-                  <span className="inline-flex items-center justify-end gap-1">
-                    <HardDrive className="w-3 h-3" /> {formatBytes(r.bytesSent)}
-                  </span>
-                </div>
+                  </Typography>
+                </Box>
+              </Stack>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexShrink: 0 }}>
+                <Stack
+                  spacing={0.25}
+                  sx={{ alignItems: 'flex-end', fontSize: 11, color: 'text.secondary' }}
+                >
+                  <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+                    <Clock size={12} /> <span>{formatDuration(r.created)}</span>
+                  </Stack>
+                  <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+                    <HardDrive size={12} /> <span>{formatBytes(r.bytesSent)}</span>
+                  </Stack>
+                </Stack>
                 {r.viewerHasPony && (
-                  <button
+                  <IconButton
+                    size="small"
                     onClick={() => rerollAvatar(r.id)}
                     disabled={rerollingSessionId === r.id}
                     title="Give this viewer a different pony picture"
-                    className="bg-sky-500/15 text-sky-400 px-2 py-1 rounded-md text-[11px] font-semibold hover:bg-sky-500/25 transition-colors disabled:opacity-40 shrink-0"
+                    sx={tintedButtonSx('info')}
                   >
                     {rerollingSessionId === r.id ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
+                      <CircularProgress size={12} color="inherit" />
                     ) : (
-                      <Dices className="w-3 h-3" />
+                      <Dices size={12} />
                     )}
-                  </button>
+                  </IconButton>
                 )}
-                <button
+                <IconButton
+                  size="small"
                   onClick={() =>
                     kickViewer(r.id, r.viewerName || r.viewerIp || 'Guest')
                   }
                   disabled={kickingSessionId === r.id}
                   title="Kick this viewer"
-                  className="bg-red-500/20 text-red-500 px-2 py-1 rounded-md text-[11px] font-semibold hover:bg-red-500/30 transition-colors disabled:opacity-40 shrink-0"
+                  sx={tintedButtonSx('error')}
                 >
                   {kickingSessionId === r.id ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <CircularProgress size={12} color="inherit" />
                   ) : (
-                    <X className="w-3 h-3" />
+                    <X size={12} />
                   )}
-                </button>
-              </div>
-            </li>
+                </IconButton>
+              </Stack>
+            </Row>
           ))
         )}
-      </ul>
+      </List>
 
-      <div className="flex justify-between items-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide my-3">
-        <span>Recent Activity</span>
-        <span
-          className="text-[10px] cursor-pointer underline"
-          onClick={() => setEvents([])}
-        >
-          Clear
-        </span>
-      </div>
-      <ul className="flex flex-col gap-1.5 max-h-[220px] overflow-y-auto list-none">
+      <SectionHeader
+        title="Recent Activity"
+        extra={
+          <Link
+            component="button"
+            onClick={() => setEvents([])}
+            color="inherit"
+            sx={{ fontSize: 10, textTransform: 'none' }}
+          >
+            Clear
+          </Link>
+        }
+      />
+      <List scroll last>
         {events.length === 0 ? (
-          <li className="p-4 text-center text-gray-400 italic bg-[#1b1b22]/50 rounded-md border border-dashed border-[#2c2c38]">
-            No recent activity
-          </li>
+          <EmptyRow>No recent activity</EmptyRow>
         ) : (
           events.map((e, i) => (
-            <li
-              key={i}
-              className="bg-[#1b1b22] border border-[#2c2c38] rounded-md px-2.5 py-1.5 flex justify-between items-center text-[11px]"
-            >
-              <div className="flex items-center gap-1.5">
-                <span
-                  className={`text-[10px] font-semibold px-1.5 rounded ${
-                    e.type === 'join'
-                      ? 'bg-green-500/20 text-green-500'
-                      : 'bg-red-500/20 text-red-500'
-                  }`}
+            <Row key={i} dense>
+              <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', minWidth: 0 }}>
+                <Box
+                  component="span"
+                  sx={[
+                    tintedChipSx(e.type === 'join' ? 'success' : 'error'),
+                    { fontSize: 10, fontWeight: 600, px: 0.75, borderRadius: 0.5 },
+                  ]}
                 >
                   {e.type === 'join' ? 'JOIN' : 'LEAVE'}
-                </span>
-                <span className="font-semibold">{e.viewer}</span>
-                <span className="text-gray-400 text-[10px]">{e.text}</span>
-              </div>
-              <span className="font-mono text-gray-400 text-[10px]">
+                </Box>
+                <Box component="span" sx={{ fontWeight: 600 }}>
+                  {e.viewer}
+                </Box>
+                <Box component="span" sx={{ fontSize: 10, color: 'text.secondary' }}>
+                  {e.text}
+                </Box>
+              </Stack>
+              <Box
+                component="span"
+                sx={{ fontFamily: 'monospace', fontSize: 10, color: 'text.secondary' }}
+              >
                 {e.time}
-              </span>
-            </li>
+              </Box>
+            </Row>
           ))
         )}
-      </ul>
-    </div>
+      </List>
+    </Box>
+  )
+}
+
+type Tone = 'success' | 'error' | 'warning' | 'info'
+
+// Matches palette.{tone}.main in lib/theme.
+const TONE_RGB: Record<Tone, string> = {
+  success: '34 197 94',
+  error: '239 68 68',
+  warning: '245 158 11',
+  info: '56 189 248',
+}
+
+function tintedChipSx(tone: Tone) {
+  return {
+    bgcolor: `rgb(${TONE_RGB[tone]} / 0.15)`,
+    color: `${tone}.light`,
+    fontWeight: 600,
+    fontSize: 11,
+    textTransform: 'uppercase',
+    '& .MuiChip-icon': { color: 'inherit', ml: 1 },
+    '&:hover': { bgcolor: `rgb(${TONE_RGB[tone]} / 0.25)` },
+  } as const
+}
+
+function tintedButtonSx(tone: Tone) {
+  return {
+    minWidth: 0,
+    px: 1,
+    py: 0.5,
+    borderRadius: 1.5,
+    fontSize: 11,
+    fontWeight: 600,
+    lineHeight: 1.4,
+    bgcolor: `rgb(${TONE_RGB[tone]} / 0.18)`,
+    color: `${tone}.light`,
+    '&:hover': { bgcolor: `rgb(${TONE_RGB[tone]} / 0.3)` },
+    '&.Mui-disabled': { color: `${tone}.light`, opacity: 0.4 },
+  } as const
+}
+
+const smallButtonSx = {
+  minWidth: 0,
+  px: 1,
+  py: 0.5,
+  borderRadius: 1.5,
+  fontSize: 11,
+  lineHeight: 1.4,
+  color: 'text.primary',
+  bgcolor: 'rgba(255, 255, 255, 0.06)',
+  border: 1,
+  borderColor: 'divider',
+  '&:hover': { bgcolor: accentAlpha(0.3) },
+} as const
+
+function StatusPill({ live, label }: { live: boolean; label: string }) {
+  return (
+    <Box
+      component="span"
+      sx={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 0.75,
+        px: 1,
+        py: 0.25,
+        borderRadius: 5,
+        fontSize: 11,
+        fontWeight: 600,
+        textTransform: 'uppercase',
+        bgcolor: live ? `rgb(${TONE_RGB.success} / 0.15)` : 'rgba(255, 255, 255, 0.06)',
+        color: live ? 'success.main' : 'text.secondary',
+      }}
+    >
+      <Box
+        component="span"
+        sx={{
+          width: 6,
+          height: 6,
+          borderRadius: '50%',
+          bgcolor: 'currentColor',
+          boxShadow: live ? '0 0 6px currentColor' : 'none',
+        }}
+      />
+      {label}
+    </Box>
+  )
+}
+
+function SectionHeader({ title, extra }: { title: string; extra?: ReactNode }) {
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        my: 1.5,
+        fontSize: 11,
+        fontWeight: 600,
+        letterSpacing: '0.04em',
+        textTransform: 'uppercase',
+        color: 'text.secondary',
+      }}
+    >
+      <span>{title}</span>
+      {extra}
+    </Box>
+  )
+}
+
+function Card({ sx, children }: { sx?: SxProps<Theme>; children: ReactNode }) {
+  return (
+    <Paper
+      variant="outlined"
+      sx={[
+        { bgcolor: 'background.default', borderRadius: 2 },
+        ...(Array.isArray(sx) ? sx : [sx]),
+      ]}
+    >
+      {children}
+    </Paper>
+  )
+}
+
+function List({
+  scroll,
+  last,
+  children,
+}: {
+  scroll?: boolean
+  last?: boolean
+  children: ReactNode
+}) {
+  return (
+    <Box
+      component="ul"
+      sx={{
+        listStyle: 'none',
+        m: 0,
+        mb: last ? 0 : 1.5,
+        p: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 0.75,
+        maxHeight: scroll ? 220 : undefined,
+        overflowY: scroll ? 'auto' : undefined,
+      }}
+    >
+      {children}
+    </Box>
+  )
+}
+
+function Row({ dense, children }: { dense?: boolean; children: ReactNode }) {
+  return (
+    <Paper
+      component="li"
+      variant="outlined"
+      sx={{
+        bgcolor: 'background.default',
+        borderRadius: 1.5,
+        px: 1.25,
+        py: dense ? 0.75 : 1,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 1,
+        fontSize: dense ? 11 : 12,
+      }}
+    >
+      {children}
+    </Paper>
+  )
+}
+
+function EmptyRow({ children }: { children: ReactNode }) {
+  return (
+    <Box
+      component="li"
+      sx={{
+        p: 2,
+        textAlign: 'center',
+        fontStyle: 'italic',
+        color: 'text.secondary',
+        borderRadius: 1.5,
+        border: '1px dashed',
+        borderColor: 'divider',
+        bgcolor: 'rgba(0, 0, 0, 0.2)',
+      }}
+    >
+      {children}
+    </Box>
+  )
+}
+
+function SmallAvatar({
+  image,
+  fallback,
+}: {
+  image: string | null
+  fallback: string
+}) {
+  return (
+    <Avatar
+      src={image ?? undefined}
+      alt=""
+      slotProps={{ img: { referrerPolicy: 'no-referrer' } }}
+      sx={{
+        width: 24,
+        height: 24,
+        flexShrink: 0,
+        fontSize: 10,
+        fontWeight: 600,
+        bgcolor: 'rgba(255, 255, 255, 0.08)',
+        color: 'text.secondary',
+      }}
+    >
+      {fallback.charAt(0).toUpperCase()}
+    </Avatar>
   )
 }

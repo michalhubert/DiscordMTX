@@ -7,7 +7,6 @@ import { authConfig } from "./auth.config";
 export const config: NextAuthConfig = {
   ...authConfig,
   providers: [
-    // Real Discord OAuth login (https://discord.com/developers/applications)
     ...(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET
       ? [
           Discord({

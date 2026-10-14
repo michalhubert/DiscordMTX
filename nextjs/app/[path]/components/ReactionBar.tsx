@@ -1,48 +1,66 @@
+import Box from '@mui/material/Box'
+import ButtonBase from '@mui/material/ButtonBase'
+import type { SxProps, Theme } from '@mui/material/styles'
 import { REACTIONS, type Reaction } from '@/lib/watchRoomShared'
 import ControlTooltip from './ControlTooltip'
 
-// Centre-to-centre distance of the desktop buttons (w-10 + gap-0.5).
+// Centre-to-centre distance of the desktop buttons (40px + 2px gap).
 export const REACTION_BUTTON_PITCH_PX = 42
 
 interface Props {
   disabled?: boolean
   onReact: (emoji: Reaction) => void
   size?: 'sm' | 'lg'
-  className?: string
+  sx?: SxProps<Theme>
 }
 
 export default function ReactionBar({
   disabled,
   onReact,
   size = 'sm',
-  className = 'flex items-center gap-0.5',
+  sx = { display: 'flex', alignItems: 'center', gap: '2px' },
 }: Props) {
-  const buttonSize =
-    size === 'lg' ? 'h-11 w-11 text-2xl' : 'h-10 w-10 text-[22px]'
+  const large = size === 'lg'
 
   return (
-    <div className={className} role="group" aria-label="Send a reaction">
+    <Box sx={sx} role="group" aria-label="Send a reaction">
       {REACTIONS.map((emoji, i) => {
         const button = (
-          <button
+          <ButtonBase
             key={emoji}
-            type="button"
             disabled={disabled}
             onClick={() => onReact(emoji)}
             aria-label={`React ${emoji}`}
-            className={`${buttonSize} flex items-center justify-center rounded-full leading-none transition-[transform,background-color] duration-150 hover:-translate-y-0.5 hover:scale-110 hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 active:scale-90 disabled:pointer-events-none disabled:opacity-40 touch-manipulation`}
+            sx={{
+              width: large ? 44 : 40,
+              height: large ? 44 : 40,
+              borderRadius: '50%',
+              fontSize: large ? 24 : 22,
+              lineHeight: 1,
+              touchAction: 'manipulation',
+              transition: 'transform 150ms, background-color 150ms',
+              '&:hover, &.Mui-focusVisible': {
+                bgcolor: 'rgba(255,255,255,0.1)',
+              },
+              '&:hover': { transform: 'translateY(-2px) scale(1.1)' },
+              '&:active': { transform: 'scale(0.9)' },
+              '&.Mui-disabled': { opacity: 0.4 },
+            }}
           >
             {emoji}
-          </button>
+          </ButtonBase>
         )
-        return size === 'sm' ? (
-          <ControlTooltip key={emoji} label="React" shortcut={String(i + 1)}>
-            {button}
-          </ControlTooltip>
-        ) : (
+        return large ? (
           button
+        ) : (
+          <ControlTooltip key={emoji} label="React" shortcut={String(i + 1)}>
+            {/* Disabled buttons fire no events, so the tooltip needs a wrapper. */}
+            <Box component="span" sx={{ display: 'flex' }}>
+              {button}
+            </Box>
+          </ControlTooltip>
         )
       })}
-    </div>
+    </Box>
   )
 }

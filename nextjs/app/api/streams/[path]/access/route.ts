@@ -34,7 +34,6 @@ export async function GET(
     return json({ status: 'unauthorized' }, 401)
   }
 
-  // Check if there's an active publisher for this path
   let pathInfo: { ready?: boolean; readyTime?: string } | null = null
   try {
     const host = process.env.MEDIAMTX_HOST ?? 'discordmtx'

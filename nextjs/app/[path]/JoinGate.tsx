@@ -1,7 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Loader2, Lock, Radio, UserX } from 'lucide-react'
+import type { ReactNode } from 'react'
+import Box from '@mui/material/Box'
+import CircularProgress from '@mui/material/CircularProgress'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
+import { Lock, Radio, UserX } from 'lucide-react'
 import PlayerClient from './PlayerClient'
 
 type AccessStatus =
@@ -107,64 +112,102 @@ export default function JoinGate({ path, whepUrl, isPrivate, bypass }: Props) {
 
   if (status === 'offline') {
     return (
-      <div className="h-full w-full flex flex-col items-center justify-center gap-3 bg-black text-gray-300">
-        <Radio className="w-10 h-10 text-red-500" />
-        <p className="text-lg font-medium">Stream is offline</p>
-        <p className="text-sm text-gray-500">
-          The streamer is not currently streaming.
-        </p>
-      </div>
+      <GateMessage
+        icon={<Radio size={40} />}
+        iconColor="error.main"
+        title="Stream is offline"
+      >
+        The streamer is not currently streaming.
+      </GateMessage>
     )
   }
 
   if (status === 'denied' && denialInfo) {
     const timeRemaining = denialInfo.deniedUntil - now
     return (
-      <div className="h-full w-full flex flex-col items-center justify-center gap-3 bg-black text-gray-300">
-        <Lock className="w-10 h-10 text-red-500" />
-        <p className="text-lg font-medium">Access denied</p>
-        <p className="text-sm text-gray-500">
-          You can try again in{' '}
-          <span className="text-red-400 font-semibold">
-            {formatTimeRemaining(timeRemaining)}
-          </span>
-        </p>
-      </div>
+      <GateMessage
+        icon={<Lock size={40} />}
+        iconColor="error.main"
+        title="Access denied"
+      >
+        You can try again in{' '}
+        <Countdown>{formatTimeRemaining(timeRemaining)}</Countdown>
+      </GateMessage>
     )
   }
 
   if (status === 'kicked' && kickedUntil) {
     const timeRemaining = kickedUntil - now
     return (
-      <div className="h-full w-full flex flex-col items-center justify-center gap-3 bg-black text-gray-300">
-        <UserX className="w-10 h-10 text-red-500" />
-        <p className="text-lg font-medium">
-          You have been kicked by the streamer
-        </p>
-        <p className="text-sm text-gray-500">
-          You can rejoin the wait room in{' '}
-          <span className="text-red-400 font-semibold">
-            {formatTimeRemaining(timeRemaining)}
-          </span>
-        </p>
-      </div>
+      <GateMessage
+        icon={<UserX size={40} />}
+        iconColor="error.main"
+        title="You have been kicked by the streamer"
+      >
+        You can rejoin the wait room in{' '}
+        <Countdown>{formatTimeRemaining(timeRemaining)}</Countdown>
+      </GateMessage>
     )
   }
 
   if (status !== 'approved') {
     return (
-      <div className="h-full w-full flex flex-col items-center justify-center gap-3 bg-black text-gray-300">
-        <Lock className="w-10 h-10 text-gray-500" />
-        <p className="text-lg font-medium">
-          Waiting for the streamer to let you in…
-        </p>
-        <p className="text-sm text-gray-500">
-          This is a private stream. Hang tight.
-        </p>
-        <Loader2 className="w-5 h-5 animate-spin text-gray-500" />
-      </div>
+      <GateMessage
+        icon={<Lock size={40} />}
+        iconColor="text.disabled"
+        title="Waiting for the streamer to let you in…"
+        footer={<CircularProgress size={20} color="primary" />}
+      >
+        This is a private stream. Hang tight.
+      </GateMessage>
     )
   }
 
   return <PlayerClient path={path} whepUrl={whepUrl} />
+}
+
+function GateMessage({
+  icon,
+  iconColor,
+  title,
+  footer,
+  children,
+}: {
+  icon: ReactNode
+  iconColor: string
+  title: string
+  footer?: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <Stack
+      spacing={1.5}
+      sx={{
+        height: '100%',
+        width: '100%',
+        alignItems: 'center',
+        justifyContent: 'center',
+        bgcolor: 'common.black',
+        px: 2,
+        textAlign: 'center',
+      }}
+    >
+      <Box sx={{ display: 'flex', color: iconColor }}>{icon}</Box>
+      <Typography variant="h6" component="p" sx={{ fontWeight: 500 }}>
+        {title}
+      </Typography>
+      <Typography variant="body2" color="text.secondary">
+        {children}
+      </Typography>
+      {footer}
+    </Stack>
+  )
+}
+
+function Countdown({ children }: { children: ReactNode }) {
+  return (
+    <Box component="span" sx={{ color: 'error.light', fontWeight: 600 }}>
+      {children}
+    </Box>
+  )
 }
