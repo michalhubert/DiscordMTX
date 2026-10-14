@@ -13,6 +13,9 @@ export const config: NextAuthConfig = {
           Discord({
             clientId: process.env.DISCORD_CLIENT_ID,
             clientSecret: process.env.DISCORD_CLIENT_SECRET,
+            // Discord now sends the RFC 9207 `iss` param on the callback; without a
+            // declared issuer Auth.js compares it to "https://authjs.dev" and rejects it.
+            issuer: "https://discord.com",
             authorization: { params: { scope: "identify" } },
             profile(profile) {
               return {
