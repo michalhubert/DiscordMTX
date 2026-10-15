@@ -18,6 +18,8 @@ services:
       HOOK_ONLINE: ${HOOK_ONLINE:-/hooks/stream-online.sh}
       HOOK_ONLINE_RESTART: ${HOOK_ONLINE_RESTART:-false}
       HOOK_OFFLINE: ${HOOK_OFFLINE:-/hooks/stream-offline.sh}
+      # Where the hooks reach Next.js; change if you rename the nextjs service or run it elsewhere
+      NEXTJS_URL: ${NEXTJS_URL:-http://nextjs:3000}
       # Sent by the hooks to Next.js; must match the nextjs service
       HOOK_SECRET: ${HOOK_SECRET:-${NEXTAUTH_SECRET:-changeme-use-a-random-secret}}
       # MediaMTX's UDP read buffer size (bytes). MediaMTX docs recommend
@@ -73,6 +75,8 @@ services:
       NEXT_PUBLIC_DISCORD_ENABLED: ${NEXT_PUBLIC_DISCORD_ENABLED:-false}
       # Set to "true" to disable authentication on /dock and /stream (useful when behind reverse proxy with local-only access)
       DISABLE_DOCK_AUTH: ${DISABLE_DOCK_AUTH:-false}
+      # Minutes a kicked or denied viewer is kept out (comma-separated), growing with each repeat kick/denial, e.g. "1,5,15"
+      DENIAL_TIMEOUTS: ${DENIAL_TIMEOUTS:-1,5,15}
 
     volumes:
       - ../config:/data # config files, and the SQLite database (saved /stream settings) in config/sqlite

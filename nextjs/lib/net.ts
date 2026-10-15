@@ -5,9 +5,9 @@
 // ends up being Cloudflare's edge IP (e.g. 172.64.x.x) rather than the
 // visitor's, since nothing upstream of this app appends the real client
 // IP to that header
-// Falls back to X-Forwarded-For/X-Real-IP, which is fine since the reverse
-// proxy in front of this app is expected to set them (see
-// API_TRUSTED_PROXIES in docker-compose.yaml).
+// Falls back to X-Forwarded-For/X-Real-IP, trusted as-is: the reverse proxy
+// in front of this app is expected to overwrite them, otherwise a client
+// can pick its own IP.
 export function getClientIp(req: { headers: Headers }): string {
   const cfConnectingIp = req.headers.get("cf-connecting-ip");
   if (cfConnectingIp) return cfConnectingIp.trim();

@@ -51,13 +51,13 @@ PLAYER_DOMAIN=stream.example.com
 # Also gates access to the /dock OBS HUD
 STREAMER_PASSWORD=change-me
 
-WEBRTC_TRUSTED_PROXIES=0.0.0.0
 WEBRTC_ADDITIONAL_HOSTS=192.168.1.100,203.0.113.10
 
 NEXTJS_PORT=8080
-MEDIAMTX_HOST=discordmtx
 NEXTAUTH_SECRET=change-me-to-a-random-secret
 NEXTAUTH_URL=https://stream.example.com
+# Optional, defaults to NEXTAUTH_SECRET
+#HOOK_SECRET=another-random-secret
 
 # Discord OAuth app (https://discord.com/developers/applications), lets viewers
 # sign in with their Discord account instead of the generated stream password
@@ -99,8 +99,12 @@ docker compose down
 | `DISCORD_WEBHOOK_URLS`    | Optional per-path webhook overrides (see below)    |
 | `PLAYER_DOMAIN`           | Domain used for the generated player URL           |
 | `STREAMER_PASSWORD`       | Password for the MediaMTX `streamer` user, and for the `/dock` OBS HUD |
-| `WEBRTC_TRUSTED_PROXIES`  | Proxies trusted by MediaMTX for WebRTC             |
+| `WEBRTC_TRUSTED_PROXIES`  | MediaMTX `webrtcTrustedProxies`, see [Trusted proxies](#trusted-proxies) |
+| `API_TRUSTED_PROXIES`     | MediaMTX `apiTrustedProxies`, see [Trusted proxies](#trusted-proxies) |
 | `WEBRTC_ADDITIONAL_HOSTS` | Addresses advertised to the WebRTC player          |
+| `UDP_READ_BUFFER_SIZE`    | MediaMTX UDP read buffer in bytes (default `1000000`), see [UDP Buffer Tuning](#udp-buffer-tuning-webrtc-packet-loss) |
+| `HOOK_ONLINE` / `HOOK_OFFLINE` / `HOOK_ONLINE_RESTART` | Default stream hooks, see [Hooks](#hooks) |
+| `NEXTJS_URL`              | Where the stream hooks reach Next.js from the discordmtx container (default `http://nextjs:3000`) |
 | `NEXTJS_PORT`             | Host port exposed by the Next.js frontend          |
 | `MEDIAMTX_HOST`           | Hostname/IP of the discordmtx service the Next.js WHEP/API proxy talks to |
 | `MEDIAMTX_PORT`           | Port of the discordmtx service the Next.js WHEP proxy talks to (default `8889`) |
@@ -112,6 +116,7 @@ docker compose down
 | `DISCORD_CLIENT_SECRET`   | Discord OAuth application client secret            |
 | `NEXT_PUBLIC_DISCORD_ENABLED` | Set to `true` to show the "Sign in with Discord" button on the login page |
 | `DISABLE_DOCK_AUTH`       | Set to `true` to skip authentication on `/dock` and `/stream` (useful when the frontend is only reachable from a trusted/local network) |
+| `DENIAL_TIMEOUTS`         | Comma-separated minutes a kicked or denied viewer is kept out, growing with each repeat kick or denial within an hour; the last value repeats (default `1,5,15`) |
 | `GUEST_AVATAR_FILTER_ID`  | Derpibooru filter used for guest avatars (optional, defaults to Derpibooru's default filter), see below |
 | `GUEST_AVATAR_TAGS`       | Extra Derpibooru tags every guest avatar must have (optional), see below |
 | `GUEST_PONY_NAMES_FILE`   | File with guest pony names replacing the built-in list (optional), see below |
@@ -186,6 +191,21 @@ This requires the domain to resolve directly to the server and UDP port `8189` t
 If the domain is behind Cloudflare proxy, regular HTTP proxying does not handle the WebRTC UDP traffic on port `8189`. In that case, either disable the Cloudflare proxy for the WebRTC hostname and forward UDP `8189` to the server, or use a Cloudflare service/plan that supports the required UDP proxying.
 
 The web interface/player itself can still be served through the normal Cloudflare HTTP/HTTPS proxy. Only the WebRTC media connection needs direct UDP connectivity.
+
+### Trusted proxies
+
+`WEBRTC_TRUSTED_PROXIES` and `API_TRUSTED_PROXIES` are MediaMTX's own settings, not the Next.js app's. They list the addresses MediaMTX lets set `X-Forwarded-For` on its WebRTC (`8889`) and control API (`9997`) ports. MediaMTX only uses that header to work out the client's IP for its logs and for IP-restricted users, and this stack has no IP-restricted users.
+
+Next.js doesn't send `X-Forwarded-For` to MediaMTX, so these settings don't change how the app behaves. Next.js works out viewer IPs itself, from `CF-Connecting-IP`, `X-Forwarded-For` or `X-Real-IP`, set by the reverse proxy in front of it.
+
+The default, `0.0.0.0/0,::/0`, trusts everyone. That's harmless for the API, which isn't published outside the Docker network. Port `8889` is published for OBS, though, so anyone reaching it can fake their IP in MediaMTX's logs. Since nothing in the stack needs to set the header, the safest value is localhost only:
+
+```env
+WEBRTC_TRUSTED_PROXIES=127.0.0.1/32
+API_TRUSTED_PROXIES=127.0.0.1/32
+```
+
+Don't use the Docker network's subnet instead: Docker's port proxy can make outside traffic look like it comes from the network's gateway, which is inside that subnet.
 
 ## Ports
 
@@ -295,7 +315,7 @@ HOOK_ONLINE_RESTART=false
 HOOK_OFFLINE=/hooks/stream-offline.sh
 ```
 
-MediaMTX runs the online hook when the stream starts and the offline hook when it stops. Both hooks call the Next.js app's `/api/streams/hook` endpoint, which - besides initializing/clearing access sessions - owns the Discord webhook message for that path (`lib/discordWebhook.ts`): it posts one message when the stream first goes online, then edits that same message in place on every subsequent online/offline transition instead of posting a new one each time. The message id is persisted in the SQLite database, so edits keep working across restarts, and if the stored message was deleted manually (or the webhook URL changed), a fresh message is posted and tracked instead.
+MediaMTX runs the online hook when the stream starts and the offline hook when it stops. Both hooks call the Next.js app's `/api/streams/hook` endpoint at `NEXTJS_URL` (default `http://nextjs:3000`, the compose service name, so changing `container_name` doesn't break it; set it if you rename the service or run Next.js elsewhere). They authenticate with `HOOK_SECRET`, which must be the same on both services. The endpoint - besides initializing/clearing access sessions - owns the Discord webhook message for that path (`lib/discordWebhook.ts`): it posts one message when the stream first goes online, then edits that same message in place on every subsequent online/offline transition instead of posting a new one each time. The message id is persisted in the SQLite database, so edits keep working across restarts, and if the stored message was deleted manually (or the webhook URL changed), a fresh message is posted and tracked instead.
 
 Viewer passwords are stored per-path in the SQLite database and can be rotated via the streamer dock (/dock). When a password is rotated, all existing viewer sessions are invalidated and viewers must re-login with the new password. The player URL posted to Discord never contains credentials - viewers enter the password on the Next.js login page.
 

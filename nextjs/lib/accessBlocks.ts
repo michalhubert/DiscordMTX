@@ -10,18 +10,12 @@ import {
 
 export type BlockedViewer = { role?: string; ip?: string; discordId?: string | null };
 
-const DEFAULT_KICK_SECONDS = 60;
-const DEFAULT_DENIAL_MINUTES = [1, 5, 15];
-// Expired denials are kept this long so a repeat denial escalates to the next timeout.
-const DENIAL_MEMORY_MS = 60 * 60 * 1000;
+const DEFAULT_BLOCK_MINUTES = [1, 5, 15];
+// Expired blocks are kept this long so a repeat kick or denial escalates to the next timeout.
+const BLOCK_MEMORY_MS = 60 * 60 * 1000;
 
-function getKickCooldownMs(): number {
-  const seconds = parseInt(process.env.KICK_COOLDOWN_SECONDS ?? "", 10);
-  return (seconds > 0 ? seconds : DEFAULT_KICK_SECONDS) * 1000;
-}
-
-function getDenialTimeoutsMs(): number[] {
-  let minutes = DEFAULT_DENIAL_MINUTES;
+function getBlockTimeoutsMs(): number[] {
+  let minutes = DEFAULT_BLOCK_MINUTES;
   const env = process.env.DENIAL_TIMEOUTS;
   if (env) {
     const parsed = env.split(",").map((s) => parseInt(s.trim(), 10));
@@ -31,7 +25,7 @@ function getDenialTimeoutsMs(): number[] {
   return minutes.map((m) => m * 60 * 1000);
 }
 
-const DENIAL_TIMEOUTS_MS = getDenialTimeoutsMs();
+const BLOCK_TIMEOUTS_MS = getBlockTimeoutsMs();
 
 function subjectOf({ role, ip, discordId }: BlockedViewer): string | null {
   if (role === "discord") return discordId ? `discord:${discordId}` : null;
@@ -52,32 +46,29 @@ export function getBlock(path: string, viewer: BlockedViewer): AccessBlock | nul
     : null;
 }
 
-export function kickViewer(path: string, viewer: BlockedViewer): void {
+// Kicks and denials share one escalating ladder, so getting kicked and
+// coming back doesn't reset the next timeout.
+function blockViewer(path: string, viewer: BlockedViewer, reason: AccessBlockRow["reason"]): void {
   const subject = subjectOf(viewer);
   if (!subject) return;
-  pruneAccessBlocks(Date.now() - DENIAL_MEMORY_MS);
+  pruneAccessBlocks(Date.now() - BLOCK_MEMORY_MS);
+  const previous = getAccessBlock(path, subject)?.denial_count ?? 0;
+  const count = Math.min(previous + 1, BLOCK_TIMEOUTS_MS.length);
   setAccessBlock({
     path,
     subject,
-    reason: "kicked",
-    denial_count: getAccessBlock(path, subject)?.denial_count ?? 0,
-    blocked_until: Date.now() + getKickCooldownMs(),
+    reason,
+    denial_count: count,
+    blocked_until: Date.now() + BLOCK_TIMEOUTS_MS[count - 1],
   });
 }
 
+export function kickViewer(path: string, viewer: BlockedViewer): void {
+  blockViewer(path, viewer, "kicked");
+}
+
 export function denyViewer(path: string, viewer: BlockedViewer): void {
-  const subject = subjectOf(viewer);
-  if (!subject) return;
-  pruneAccessBlocks(Date.now() - DENIAL_MEMORY_MS);
-  const previous = getAccessBlock(path, subject)?.denial_count ?? 0;
-  const denialCount = Math.min(previous + 1, DENIAL_TIMEOUTS_MS.length);
-  setAccessBlock({
-    path,
-    subject,
-    reason: "denied",
-    denial_count: denialCount,
-    blocked_until: Date.now() + DENIAL_TIMEOUTS_MS[denialCount - 1],
-  });
+  blockViewer(path, viewer, "denied");
 }
 
 export function clearBlock(path: string, viewer: BlockedViewer): void {
