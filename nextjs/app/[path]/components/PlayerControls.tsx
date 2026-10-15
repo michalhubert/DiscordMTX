@@ -1,4 +1,7 @@
-import type { ChangeEvent, ReactNode } from 'react'
+import Box from '@mui/material/Box'
+import ButtonBase, { type ButtonBaseProps } from '@mui/material/ButtonBase'
+import Slider from '@mui/material/Slider'
+import { keyframes } from '@mui/material/styles'
 import {
   Maximize,
   Minimize,
@@ -7,6 +10,8 @@ import {
   Volume2,
   VolumeX,
 } from 'lucide-react'
+import AccentPicker from '@/app/components/AccentPicker'
+import { accentAlpha } from '@/lib/theme'
 import type { Reaction } from '@/lib/watchRoomShared'
 import type {
   ConnectionQuality,
@@ -17,6 +22,10 @@ import ConnectionIndicator from './ConnectionIndicator'
 import ControlTooltip from './ControlTooltip'
 import ReactionBar from './ReactionBar'
 
+const pulse = keyframes`
+  50% { opacity: 0.4; }
+`
+
 interface Props {
   visible: boolean
   onHoldVisible: (hold: boolean) => void
@@ -25,7 +34,7 @@ interface Props {
   volume: number
   isFullscreen: boolean
   onToggleMute: () => void
-  onVolumeChange: (e: ChangeEvent<HTMLInputElement>) => void
+  onVolumeChange: (volume: number) => void
   onToggleFullscreen: () => void
   canReact: boolean
   onReact: (emoji: Reaction) => void
@@ -37,27 +46,37 @@ interface Props {
   warnings: ConnectionWarning[]
 }
 
-function IconButton({
-  onClick,
+const controlButtonSx = {
+  height: 40,
+  minWidth: 40,
+  gap: 1,
+  px: 1.25,
+  borderRadius: 5,
+  color: 'rgba(255,255,255,0.9)',
+  transition: 'background-color 150ms, transform 150ms',
+  '&:hover, &.Mui-focusVisible': {
+    bgcolor: accentAlpha(0.2),
+    color: 'common.white',
+  },
+  '&:active': { transform: 'scale(0.95)' },
+  '&[aria-pressed="true"]': {
+    bgcolor: accentAlpha(0.3),
+    color: 'primary.light',
+  },
+}
+
+function ControlButton({
   label,
   pressed,
-  children,
-}: {
-  onClick: () => void
-  label: string
-  pressed?: boolean
-  children: ReactNode
-}) {
+  ...props
+}: ButtonBaseProps & { label: string; pressed?: boolean }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <ButtonBase
+      {...props}
       aria-label={label}
       aria-pressed={pressed}
-      className="flex h-10 min-w-10 items-center justify-center gap-2 rounded-full px-2.5 text-white/90 transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 active:scale-95 aria-pressed:bg-white/15 aria-pressed:text-white"
-    >
-      {children}
-    </button>
+      sx={controlButtonSx}
+    />
   )
 }
 
@@ -84,97 +103,178 @@ export default function PlayerControls({
   const VolumeIcon = level === 0 ? VolumeX : level < 0.5 ? Volume1 : Volume2
 
   return (
-    <div
+    <Box
       onClick={(e) => e.stopPropagation()}
-      className={`absolute inset-x-0 bottom-0 z-20 hidden bg-gradient-to-t from-black/85 via-black/45 to-transparent px-4 pb-4 pt-20 transition-opacity duration-300 sm:block ${
-        visible ? 'opacity-100' : 'pointer-events-none opacity-0'
-      }`}
+      sx={{
+        position: 'absolute',
+        insetInline: 0,
+        bottom: 0,
+        zIndex: 20,
+        display: { xs: 'none', sm: 'block' },
+        background:
+          'linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0.45) 50%, transparent)',
+        px: 2,
+        pb: 2,
+        pt: 10,
+        transition: 'opacity 300ms',
+        opacity: visible ? 1 : 0,
+        pointerEvents: visible ? undefined : 'none',
+      }}
     >
-      <div
-        className="grid grid-cols-[1fr_auto_1fr] items-center gap-4"
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: '1fr auto 1fr',
+          alignItems: 'center',
+          gap: 2,
+        }}
         onPointerEnter={() => onHoldVisible(true)}
         onPointerLeave={() => onHoldVisible(false)}
       >
-        <div className="flex min-w-0 items-center gap-1">
-          <span
-            className={`mr-2 flex h-6 items-center gap-1.5 rounded px-2 text-[11px] font-bold uppercase tracking-wider ${
-              isLive ? 'bg-red-600 text-white' : 'bg-white/15 text-white/60'
-            }`}
+        <Box sx={{ display: 'flex', minWidth: 0, alignItems: 'center', gap: 0.5 }}>
+          <Box
+            component="span"
+            sx={{
+              mr: 1,
+              display: 'flex',
+              height: 24,
+              alignItems: 'center',
+              gap: 0.75,
+              borderRadius: 1,
+              px: 1,
+              fontSize: 11,
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              bgcolor: isLive ? 'error.dark' : 'rgba(255,255,255,0.15)',
+              color: isLive ? 'common.white' : 'rgba(255,255,255,0.6)',
+            }}
           >
-            <span
-              className={`h-1.5 w-1.5 rounded-full bg-white ${isLive ? 'animate-pulse' : 'opacity-60'}`}
+            <Box
+              component="span"
+              sx={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                bgcolor: 'common.white',
+                opacity: isLive ? 1 : 0.6,
+                animation: isLive ? `${pulse} 2s ease-in-out infinite` : 'none',
+              }}
             />
             {isLive ? 'Live' : 'Offline'}
-          </span>
+          </Box>
 
           <ControlTooltip
             label={viewersVisible ? 'Hide viewers' : 'Show viewers'}
             shortcut="V"
           >
-            <IconButton
+            <ControlButton
               onClick={onToggleViewers}
               label={`${viewerCount} watching - ${viewersVisible ? 'hide' : 'show'} viewer list`}
               pressed={viewersVisible}
             >
-              <Users className="h-5 w-5" />
-              <span className="min-w-[2ch] text-left text-sm font-semibold tabular-nums">
+              <Users size={20} />
+              <Box
+                component="span"
+                sx={{
+                  minWidth: '2ch',
+                  textAlign: 'left',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
                 {viewerCount > 0 ? viewerCount : '–'}
-              </span>
-            </IconButton>
+              </Box>
+            </ControlButton>
           </ControlTooltip>
 
           <ConnectionIndicator quality={quality} stats={stats} warnings={warnings} />
-        </div>
+        </Box>
 
-        <div className="rounded-full bg-white/[0.08] p-1 shadow-lg ring-1 ring-white/10 backdrop-blur-md">
+        <Box
+          sx={{
+            borderRadius: 6,
+            bgcolor: accentAlpha(0.12),
+            p: 0.5,
+            boxShadow: `0 0 0 1px ${accentAlpha(0.35)}, 0 8px 24px rgba(0,0,0,0.3)`,
+            backdropFilter: 'blur(12px)',
+          }}
+        >
           <ReactionBar disabled={!canReact} onReact={onReact} />
-        </div>
+        </Box>
 
-        <div className="flex items-center justify-end gap-1">
-          <div className="group/volume flex items-center">
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              '&:hover .volume-slider, &:focus-within .volume-slider': {
+                width: 96,
+              },
+            }}
+          >
             <ControlTooltip label={isMuted ? 'Unmute' : 'Mute'} shortcut="M">
-              <IconButton
+              <ControlButton
                 onClick={onToggleMute}
                 label={isMuted ? 'Unmute' : 'Mute'}
               >
-                <VolumeIcon className="h-5 w-5" />
-              </IconButton>
+                <VolumeIcon size={20} />
+              </ControlButton>
             </ControlTooltip>
-            <div className="flex h-10 w-0 items-center overflow-hidden transition-[width] duration-200 ease-out group-hover/volume:w-24 group-focus-within/volume:w-24">
-              <input
-                type="range"
+            <Box
+              className="volume-slider"
+              sx={{
+                display: 'flex',
+                height: 40,
+                width: 0,
+                alignItems: 'center',
+                overflow: 'hidden',
+                transition: 'width 200ms ease-out',
+              }}
+            >
+              <Slider
+                size="small"
                 min={0}
                 max={1}
                 step={0.01}
                 value={level}
-                onChange={onVolumeChange}
+                onChange={(_, value) => onVolumeChange(value as number)}
                 aria-label="Volume"
-                style={{
-                  background: `linear-gradient(to right, #fff ${level * 100}%, rgba(255,255,255,0.25) ${level * 100}%)`,
+                sx={{
+                  mx: 1.5,
+                  width: 72,
+                  flexShrink: 0,
+                  color: 'primary.main',
+                  '& .MuiSlider-rail': { opacity: 0.25 },
+                  '& .MuiSlider-thumb': {
+                    width: 12,
+                    height: 12,
+                    '&:hover, &.Mui-focusVisible': {
+                      boxShadow: `0 0 0 6px ${accentAlpha(0.25)}`,
+                    },
+                  },
                 }}
-                className="mx-2 block h-1 w-20 cursor-pointer appearance-none rounded-full focus-visible:outline-none [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-white [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow [&::-webkit-slider-thumb]:transition-transform hover:[&::-webkit-slider-thumb]:scale-125"
               />
-            </div>
-          </div>
+            </Box>
+          </Box>
+
+          <AccentPicker sx={{ ...controlButtonSx, px: 0 }} />
 
           <ControlTooltip
             label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
             shortcut="F"
             align="end"
           >
-            <IconButton
+            <ControlButton
               onClick={onToggleFullscreen}
               label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
             >
-              {isFullscreen ? (
-                <Minimize className="h-5 w-5" />
-              ) : (
-                <Maximize className="h-5 w-5" />
-              )}
-            </IconButton>
+              {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+            </ControlButton>
           </ControlTooltip>
-        </div>
-      </div>
-    </div>
+        </Box>
+      </Box>
+    </Box>
   )
 }

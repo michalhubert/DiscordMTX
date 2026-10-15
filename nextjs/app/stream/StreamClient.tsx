@@ -1,7 +1,19 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Loader2, Monitor, Radio, RefreshCw, Save, Square } from 'lucide-react'
+import Alert from '@mui/material/Alert'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import Checkbox from '@mui/material/Checkbox'
+import Chip from '@mui/material/Chip'
+import FormControlLabel from '@mui/material/FormControlLabel'
+import MenuItem from '@mui/material/MenuItem'
+import Paper from '@mui/material/Paper'
+import Slider from '@mui/material/Slider'
+import Stack from '@mui/material/Stack'
+import TextField from '@mui/material/TextField'
+import Typography from '@mui/material/Typography'
+import { Monitor, Radio, RefreshCw, Save, Square } from 'lucide-react'
 import DockClient from '../dock/DockClient'
 
 type SourceType = 'monitor' | 'window' | 'browser'
@@ -121,7 +133,6 @@ function preferBaselineH264(
   return [...baseline, ...rest, ...otherH264]
 }
 
-// Rounds a value to the nearest hundred and clamps it within [min, max].
 function roundToHundred(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min
   const rounded = Math.round(value / 100) * 100
@@ -166,7 +177,7 @@ export default function StreamClient() {
     }
   }, [])
 
-  // Populates the path selector from MediaMTX's configured paths (paths.yml) - no custom/arbitrary paths allowed.
+  // Only paths configured in MediaMTX (paths.yml) can be published to.
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -189,7 +200,6 @@ export default function StreamClient() {
         if (!cancelled) {
           const sortedPaths = Array.from(names).sort()
           setAvailablePaths(sortedPaths)
-          // Set first available path as default if current path is empty
           if (sortedPaths.length > 0 && !settings.path) {
             setSettings((prev) => ({ ...prev, path: sortedPaths[0] }))
           }
@@ -292,7 +302,8 @@ export default function StreamClient() {
       noiseSuppression: false,
       autoGainControl: false,
     }
-    // Chrome-only hints: for a window    // only (not full system audio); for a screen, only offer system audio there.
+    // Chrome-only hints: for a window, capture only its own audio (not full
+    // system audio); for a screen, only offer system audio there.
     const displayMediaOptions: DisplayMediaStreamOptions & {
       systemAudio?: 'include' | 'exclude'
       windowAudio?: 'exclude' | 'window' | 'system'
@@ -480,7 +491,6 @@ export default function StreamClient() {
     }
   }
 
-  // Lets the user swap the shared desktop/window/tab mid-stream, like Discord's "Change source".
   async function changeSource() {
     if (!pcRef.current || !videoSenderRef.current) return
 
@@ -567,321 +577,331 @@ export default function StreamClient() {
   const isLive = status === 'live' || status === 'starting'
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-200 p-6">
-      <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-6 items-start">
-        <div className="max-w-3xl w-full mx-auto lg:mx-0">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-2">
-              <Radio className="w-5 h-5 text-red-500" />
-              <h1 className="text-xl font-semibold text-white">
+    <Box sx={{ minHeight: '100vh', p: 3 }}>
+      <Box
+        sx={{
+          maxWidth: 1152,
+          mx: 'auto',
+          display: 'flex',
+          flexDirection: { xs: 'column', lg: 'row' },
+          gap: 3,
+          alignItems: 'flex-start',
+        }}
+      >
+        <Box sx={{ maxWidth: 768, width: '100%', mx: { xs: 'auto', lg: 0 } }}>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              mb: 3,
+            }}
+          >
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+              <Box sx={{ display: 'flex', color: 'primary.main' }}>
+                <Radio size={20} />
+              </Box>
+              <Typography variant="h6" component="h1" sx={{ fontWeight: 600 }}>
                 Browser Stream
-              </h1>
-            </div>
-            <div
-              className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full uppercase ${
-                status === 'live'
-                  ? 'bg-green-500/15 text-green-500'
-                  : 'bg-gray-800 text-gray-400'
-              }`}
-            >
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
+              </Typography>
+            </Stack>
+            <Chip
+              size="small"
+              label={
+                status === 'starting'
+                  ? 'Starting…'
+                  : status === 'live'
+                    ? 'Live'
+                    : status === 'error'
+                      ? 'Error'
+                      : 'Idle'
+              }
+              icon={
+                <Box
+                  component="span"
+                  sx={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    bgcolor: 'currentColor',
+                    boxShadow: status === 'live' ? '0 0 6px currentColor' : 'none',
+                  }}
+                />
+              }
+              sx={{
+                fontWeight: 600,
+                fontSize: 12,
+                textTransform: 'uppercase',
+                bgcolor:
                   status === 'live'
-                    ? 'bg-green-500 shadow-[0_0_6px_#22c55e]'
-                    : 'bg-gray-500'
-                }`}
-              />
-              {status === 'starting'
-                ? 'Starting…'
-                : status === 'live'
-                  ? 'Live'
-                  : status === 'error'
-                    ? 'Error'
-                    : 'Idle'}
-            </div>
-          </div>
+                    ? 'rgb(34 197 94 / 0.15)'
+                    : 'rgba(255, 255, 255, 0.06)',
+                color: status === 'live' ? 'success.main' : 'text.secondary',
+                '& .MuiChip-icon': { color: 'inherit', ml: 1.25 },
+              }}
+            />
+          </Box>
 
-          <div className="bg-black rounded-xl overflow-hidden border border-gray-800 aspect-video mb-6 flex items-center justify-center">
-            <video
+          <Paper
+            variant="outlined"
+            sx={{
+              position: 'relative',
+              bgcolor: 'common.black',
+              borderRadius: 3,
+              overflow: 'hidden',
+              aspectRatio: '16 / 9',
+              mb: 3,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Box
+              component="video"
               ref={videoRef}
               autoPlay
               playsInline
-              className="w-full h-full object-contain"
+              sx={{ width: '100%', height: '100%', objectFit: 'contain' }}
             />
             {status === 'idle' && (
-              <div className="absolute flex flex-col items-center gap-2 text-gray-500">
-                <Monitor className="w-8 h-8" />
-                <span className="text-sm">No source selected</span>
-              </div>
+              <Stack
+                spacing={1}
+                sx={{ position: 'absolute', alignItems: 'center', color: 'text.disabled' }}
+              >
+                <Monitor size={32} />
+                <Typography variant="body2">No source selected</Typography>
+              </Stack>
             )}
-          </div>
+          </Paper>
 
           {errorMessage && (
-            <p className="text-red-400 text-sm mb-4">{errorMessage}</p>
+            <Alert severity="error" variant="outlined" sx={{ mb: 2 }}>
+              {errorMessage}
+            </Alert>
           )}
 
-          <div className="flex gap-3 mb-8">
+          <Stack direction="row" spacing={1.5} sx={{ mb: 4 }}>
             {!isLive ? (
-              <button
+              <Button
+                fullWidth
+                variant="contained"
+                size="large"
                 onClick={startStream}
-                className="flex-1 bg-red-600 hover:bg-red-500 text-white font-medium rounded-lg py-2.5 text-sm transition-colors inline-flex items-center justify-center gap-2"
+                startIcon={<Radio size={16} />}
               >
-                <Radio className="w-4 h-4" />
                 Start Streaming
-              </button>
+              </Button>
             ) : (
               <>
-                <button
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  color="inherit"
+                  size="large"
                   onClick={changeSource}
-                  disabled={status === 'starting' || changingSource}
-                  title="Pick a different desktop, window, or tab to share, without interrupting the stream"
-                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-medium rounded-lg py-2.5 text-sm transition-colors inline-flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {changingSource ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="w-4 h-4" />
-                  )}
-                  Change Source
-                </button>
-                <button
-                  onClick={() => stopStream()}
                   disabled={status === 'starting'}
-                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-medium rounded-lg py-2.5 text-sm transition-colors inline-flex items-center justify-center gap-2 disabled:opacity-50"
+                  loading={changingSource}
+                  loadingPosition="start"
+                  title="Pick a different desktop, window, or tab to share, without interrupting the stream"
+                  startIcon={<RefreshCw size={16} />}
+                  sx={{ borderColor: 'divider' }}
                 >
-                  {status === 'starting' ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Square className="w-4 h-4" />
-                  )}
+                  Change Source
+                </Button>
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  color="inherit"
+                  size="large"
+                  onClick={() => stopStream()}
+                  loading={status === 'starting'}
+                  loadingPosition="start"
+                  startIcon={<Square size={16} />}
+                  sx={{ borderColor: 'divider' }}
+                >
                   Stop Streaming
-                </button>
+                </Button>
               </>
             )}
-          </div>
+          </Stack>
 
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-            <h2 className="text-sm font-semibold text-white uppercase tracking-wide mb-4">
+          <Paper variant="outlined" sx={{ borderRadius: 3, p: 2.5 }}>
+            <Typography
+              variant="overline"
+              component="h2"
+              sx={{ display: 'block', mb: 2, fontSize: 13 }}
+            >
               Settings
-            </h2>
+            </Typography>
 
             {loadingSettings ? (
-              <p className="text-sm text-gray-500">Loading settings…</p>
+              <Typography variant="body2" color="text.secondary">
+                Loading settings…
+              </Typography>
             ) : (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-gray-400 text-xs mb-1">
-                    Path
-                  </label>
-                  <select
-                    value={settings.path}
-                    onChange={(e) => update('path', e.target.value)}
-                    disabled={isLive || availablePaths.length === 0}
-                    className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm disabled:opacity-50 font-mono"
-                  >
-                    {!availablePaths.includes(settings.path) && (
-                      <option value={settings.path}>{settings.path}</option>
-                    )}
-                    {availablePaths.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-[11px] text-gray-500 mt-1">
-                    {availablePaths.length === 0
+              <Stack spacing={2.5}>
+                <TextField
+                  select
+                  label="Path"
+                  value={settings.path}
+                  onChange={(e) => update('path', e.target.value)}
+                  disabled={isLive || availablePaths.length === 0}
+                  error={availablePaths.length > 0 && !availablePaths.includes(settings.path)}
+                  helperText={
+                    availablePaths.length === 0
                       ? 'Loading paths from MediaMTX…'
                       : availablePaths.includes(settings.path)
                         ? `Publishes to MediaMTX at "${settings.path}" — viewers watch it at /${settings.path}. Only paths declared in paths.yml can be used.`
-                        : `"${settings.path}" isn't declared in paths.yml — pick one of the paths listed above.`}
-                  </p>
-                </div>
+                        : `"${settings.path}" isn't declared in paths.yml — pick one of the paths listed above.`
+                  }
+                  slotProps={{ select: { sx: { fontFamily: 'monospace' } } }}
+                >
+                  {!availablePaths.includes(settings.path) && (
+                    <MenuItem value={settings.path}>{settings.path || '—'}</MenuItem>
+                  )}
+                  {availablePaths.map((p) => (
+                    <MenuItem key={p} value={p} sx={{ fontFamily: 'monospace' }}>
+                      {p}
+                    </MenuItem>
+                  ))}
+                </TextField>
 
-                <div>
-                  <label className="block text-gray-400 text-xs mb-1">
-                    Preferred source
-                  </label>
-                  <select
+                <Box>
+                  <TextField
+                    select
+                    label="Preferred source"
                     value={settings.sourceType}
                     onChange={(e) =>
                       update('sourceType', e.target.value as SourceType)
                     }
                     disabled={isLive}
-                    className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm disabled:opacity-50"
+                    helperText="This only pre-selects the tab in the browser's share picker — you can still pick a different source there."
                   >
-                    <option value="monitor">Entire desktop</option>
-                    <option value="window">Application window</option>
-                    <option value="browser">Browser tab</option>
-                  </select>
-                  <p className="text-[11px] text-gray-500 mt-1">
-                    This only pre-selects the tab in the browser&apos;s share
-                    picker — you can still pick a different source there.
-                  </p>
-                  {settings.sourceType === 'window' &&
-                    settings.includeAudio && (
-                      <p className="text-[11px] text-yellow-500 mt-1">
-                        Heads up: window audio is scoped to that window only
-                        (not the whole desktop) via a Chrome-only hint, but
-                        support varies — some browsers/OSes still can&apos;t
-                        provide it. Pick &quot;Entire desktop&quot; or
-                        &quot;Browser tab&quot; instead if it doesn&apos;t work.
-                      </p>
-                    )}
-                </div>
+                    <MenuItem value="monitor">Entire desktop</MenuItem>
+                    <MenuItem value="window">Application window</MenuItem>
+                    <MenuItem value="browser">Browser tab</MenuItem>
+                  </TextField>
+                  {settings.sourceType === 'window' && settings.includeAudio && (
+                    <Alert severity="warning" variant="outlined" sx={{ mt: 1, py: 0, fontSize: 12 }}>
+                      Heads up: window audio is scoped to that window only (not
+                      the whole desktop) via a Chrome-only hint, but support
+                      varies — some browsers/OSes still can&apos;t provide it.
+                      Pick &quot;Entire desktop&quot; or &quot;Browser tab&quot;
+                      instead if it doesn&apos;t work.
+                    </Alert>
+                  )}
+                </Box>
 
-                <div className="flex items-center gap-2">
-                  <input
-                    id="fixedResolution"
-                    type="checkbox"
-                    checked={settings.fixedResolution}
-                    onChange={(e) =>
-                      update('fixedResolution', e.target.checked)
-                    }
-                    disabled={isLive}
-                    className="accent-red-500"
-                  />
-                  <label
-                    htmlFor="fixedResolution"
-                    className="text-gray-300 text-sm"
-                  >
-                    Fix output resolution
-                  </label>
-                </div>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={settings.fixedResolution}
+                      onChange={(e) => update('fixedResolution', e.target.checked)}
+                      disabled={isLive}
+                    />
+                  }
+                  label="Fix output resolution"
+                  sx={{ my: -1 }}
+                />
 
                 {settings.fixedResolution && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-gray-400 text-xs mb-1">
-                        Width
-                      </label>
-                      <input
-                        type="number"
-                        value={settings.width}
-                        onChange={(e) =>
-                          update('width', Number(e.target.value))
-                        }
-                        disabled={isLive}
-                        className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm disabled:opacity-50"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-gray-400 text-xs mb-1">
-                        Height
-                      </label>
-                      <input
-                        type="number"
-                        value={settings.height}
-                        onChange={(e) =>
-                          update('height', Number(e.target.value))
-                        }
-                        disabled={isLive}
-                        className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm disabled:opacity-50"
-                      />
-                    </div>
-                  </div>
+                  <Box sx={twoColumnsSx}>
+                    <TextField
+                      type="number"
+                      label="Width"
+                      value={settings.width}
+                      onChange={(e) => update('width', Number(e.target.value))}
+                      disabled={isLive}
+                    />
+                    <TextField
+                      type="number"
+                      label="Height"
+                      value={settings.height}
+                      onChange={(e) => update('height', Number(e.target.value))}
+                      disabled={isLive}
+                    />
+                  </Box>
                 )}
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-gray-400 text-xs mb-1">
-                      Framerate (fps)
-                    </label>
-                    <input
-                      type="number"
-                      value={settings.fps}
-                      onChange={(e) => update('fps', Number(e.target.value))}
-                      disabled={isLive}
-                      className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm disabled:opacity-50"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-gray-400 text-xs mb-1">
-                      Video codec
-                    </label>
-                    <select
-                      value={settings.videoCodec}
-                      onChange={(e) =>
-                        update('videoCodec', e.target.value as VideoCodec)
-                      }
-                      disabled={isLive}
-                      className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm disabled:opacity-50"
-                    >
-                      <option value="h264">
-                        H.264 (hardware/NVENC, recommended)
-                      </option>
-                      <option value="auto">Auto</option>
-                      <option value="vp9">VP9</option>
-                      <option value="vp8">VP8</option>
-                      <option value="av1">AV1</option>
-                    </select>
-                    <p className="text-[11px] text-gray-500 mt-1">
-                      H.264 always negotiates a B-frame-free Baseline profile
-                      for lower latency. There is no API for a web page to pick
-                      a specific encoder (e.g. NVENC) - the browser decides -
-                      but Chrome only hardware-accelerates H.264 broadly (VP8
-                      has no hardware encoder at all, VP9/AV1 support is
-                      limited), so H.264 is the closest equivalent to what OBS
-                      does with NVENC at high bitrates. Make sure hardware
-                      acceleration is enabled in your browser's settings.
-                    </p>
-                  </div>
-                </div>
+                <Box sx={twoColumnsSx}>
+                  <TextField
+                    type="number"
+                    label="Framerate (fps)"
+                    value={settings.fps}
+                    onChange={(e) => update('fps', Number(e.target.value))}
+                    disabled={isLive}
+                  />
+                  <TextField
+                    select
+                    label="Video codec"
+                    value={settings.videoCodec}
+                    onChange={(e) =>
+                      update('videoCodec', e.target.value as VideoCodec)
+                    }
+                    disabled={isLive}
+                    helperText="H.264 always negotiates a B-frame-free Baseline profile for lower latency. There is no API for a web page to pick a specific encoder (e.g. NVENC) - the browser decides - but Chrome only hardware-accelerates H.264 broadly (VP8 has no hardware encoder at all, VP9/AV1 support is limited), so H.264 is the closest equivalent to what OBS does with NVENC at high bitrates. Make sure hardware acceleration is enabled in your browser's settings."
+                  >
+                    <MenuItem value="h264">
+                      H.264 (hardware/NVENC, recommended)
+                    </MenuItem>
+                    <MenuItem value="auto">Auto</MenuItem>
+                    <MenuItem value="vp9">VP9</MenuItem>
+                    <MenuItem value="vp8">VP8</MenuItem>
+                    <MenuItem value="av1">AV1</MenuItem>
+                  </TextField>
+                </Box>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-gray-400 text-xs mb-1">
-                      Content hint
-                    </label>
-                    <select
-                      value={settings.contentHint}
-                      onChange={(e) =>
-                        update('contentHint', e.target.value as ContentHint)
-                      }
-                      disabled={isLive}
-                      className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm disabled:opacity-50"
-                    >
-                      <option value="motion">Motion (games, video)</option>
-                      <option value="detail">Detail (static content)</option>
-                      <option value="text">Text (reading/slides)</option>
-                      <option value="none">Browser default</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-gray-400 text-xs mb-1">
-                      Degradation preference
-                    </label>
-                    <select
-                      value={settings.degradationPreference}
-                      onChange={(e) =>
-                        update(
-                          'degradationPreference',
-                          e.target.value as DegradationPreference,
-                        )
-                      }
-                      disabled={isLive}
-                      className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm disabled:opacity-50"
-                    >
-                      <option value="maintain-framerate">
-                        Maintain framerate (less stutter)
-                      </option>
-                      <option value="maintain-resolution">
-                        Maintain resolution (sharper)
-                      </option>
-                      <option value="balanced">Balanced</option>
-                    </select>
-                  </div>
-                </div>
+                <Box sx={twoColumnsSx}>
+                  <TextField
+                    select
+                    label="Content hint"
+                    value={settings.contentHint}
+                    onChange={(e) =>
+                      update('contentHint', e.target.value as ContentHint)
+                    }
+                    disabled={isLive}
+                  >
+                    <MenuItem value="motion">Motion (games, video)</MenuItem>
+                    <MenuItem value="detail">Detail (static content)</MenuItem>
+                    <MenuItem value="text">Text (reading/slides)</MenuItem>
+                    <MenuItem value="none">Browser default</MenuItem>
+                  </TextField>
+                  <TextField
+                    select
+                    label="Degradation preference"
+                    value={settings.degradationPreference}
+                    onChange={(e) =>
+                      update(
+                        'degradationPreference',
+                        e.target.value as DegradationPreference,
+                      )
+                    }
+                    disabled={isLive}
+                  >
+                    <MenuItem value="maintain-framerate">
+                      Maintain framerate (less stutter)
+                    </MenuItem>
+                    <MenuItem value="maintain-resolution">
+                      Maintain resolution (sharper)
+                    </MenuItem>
+                    <MenuItem value="balanced">Balanced</MenuItem>
+                  </TextField>
+                </Box>
 
-                <div>
-                  <div className="flex items-center justify-between gap-3 mb-1">
-                    <label className="block text-gray-400 text-xs">
+                <Box>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 1.5,
+                    }}
+                  >
+                    <Typography variant="body2" color="text.secondary">
                       Video bitrate (kbps)
-                    </label>
-                    <input
+                    </Typography>
+                    <TextField
                       type="number"
-                      min={500}
-                      max={20000}
-                      step={100}
                       value={settings.videoBitrateKbps}
                       onChange={(e) =>
                         update('videoBitrateKbps', Number(e.target.value))
@@ -893,77 +913,101 @@ export default function StreamClient() {
                         )
                       }
                       disabled={isLive}
-                      className="w-24 bg-gray-800 border border-gray-700 text-white rounded-lg px-2 py-1 text-sm text-right disabled:opacity-50"
+                      fullWidth={false}
+                      slotProps={{
+                        htmlInput: {
+                          min: 500,
+                          max: 20000,
+                          step: 100,
+                          style: { textAlign: 'right' },
+                          'aria-label': 'Video bitrate (kbps)',
+                        },
+                      }}
+                      sx={{ width: 112 }}
                     />
-                  </div>
-                  <input
-                    type="range"
+                  </Box>
+                  <Slider
                     min={500}
                     max={20000}
                     step={100}
                     value={settings.videoBitrateKbps}
-                    onChange={(e) =>
-                      update('videoBitrateKbps', Number(e.target.value))
+                    onChange={(_, value) =>
+                      update('videoBitrateKbps', value as number)
                     }
                     disabled={isLive}
-                    className="w-full accent-red-500 disabled:opacity-50"
+                    aria-label="Video bitrate"
+                    valueLabelDisplay="auto"
                   />
-                </div>
+                </Box>
 
-                <div className="flex items-center gap-2">
-                  <input
-                    id="includeAudio"
-                    type="checkbox"
-                    checked={settings.includeAudio}
-                    onChange={(e) => update('includeAudio', e.target.checked)}
-                    disabled={isLive}
-                    className="accent-red-500"
-                  />
-                  <label
-                    htmlFor="includeAudio"
-                    className="text-gray-300 text-sm"
-                  >
-                    Include audio (system/tab, if supported by your browser)
-                  </label>
-                </div>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={settings.includeAudio}
+                      onChange={(e) => update('includeAudio', e.target.checked)}
+                      disabled={isLive}
+                    />
+                  }
+                  label="Include audio (system/tab, if supported by your browser)"
+                  sx={{ my: -1 }}
+                />
 
                 {settings.includeAudio && (
-                  <div>
-                    <label className="block text-gray-400 text-xs mb-1">
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">
                       Audio bitrate: {settings.audioBitrateKbps} kbps
-                    </label>
-                    <input
-                      type="range"
+                    </Typography>
+                    <Slider
                       min={32}
                       max={320}
                       step={8}
                       value={settings.audioBitrateKbps}
-                      onChange={(e) =>
-                        update('audioBitrateKbps', Number(e.target.value))
+                      onChange={(_, value) =>
+                        update('audioBitrateKbps', value as number)
                       }
                       disabled={isLive}
-                      className="w-full accent-red-500 disabled:opacity-50"
+                      aria-label="Audio bitrate"
                     />
-                  </div>
+                  </Box>
                 )}
 
-                <button
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  color="inherit"
+                  size="large"
                   onClick={saveSettings}
-                  disabled={saving}
-                  className="w-full bg-gray-800 hover:bg-gray-700 text-white font-medium rounded-lg py-2.5 text-sm transition-colors inline-flex items-center justify-center gap-2 disabled:opacity-50"
+                  loading={saving}
+                  loadingPosition="start"
+                  startIcon={<Save size={16} />}
+                  sx={{ borderColor: 'divider' }}
                 >
-                  <Save className="w-4 h-4" />
                   {saved ? 'Saved!' : saving ? 'Saving…' : 'Save Settings'}
-                </button>
-              </div>
+                </Button>
+              </Stack>
             )}
-          </div>
-        </div>
+          </Paper>
+        </Box>
 
-        <div className="w-full lg:w-90 shrink-0 rounded-xl overflow-hidden border border-gray-800">
-          <DockClient />
-        </div>
-      </div>
-    </div>
+        <Paper
+          variant="outlined"
+          sx={{
+            width: { xs: '100%', lg: 360 },
+            flexShrink: 0,
+            borderRadius: 3,
+            overflow: 'hidden',
+          }}
+        >
+          <DockClient embedded />
+        </Paper>
+      </Box>
+    </Box>
   )
 }
+
+const twoColumnsSx = {
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  gap: 1.5,
+  alignItems: 'start',
+} as const

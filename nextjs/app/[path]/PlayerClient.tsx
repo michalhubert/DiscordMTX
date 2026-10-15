@@ -1,9 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ChangeEvent } from 'react'
+import Box from '@mui/material/Box'
+import IconButton from '@mui/material/IconButton'
 import { AnimatePresence, motion } from 'motion/react'
 import { VolumeX, X } from 'lucide-react'
+import { useAvatarAccentDetection } from '@/lib/avatarAccent'
+import { accentAlpha, accentGlassSx, glassSx } from '@/lib/theme'
 import {
   REACTIONS,
   type Reaction,
@@ -127,6 +130,9 @@ export default function PlayerClient({ path, whepUrl }: Props) {
   useEffect(() => {
     selfIdRef.current = self?.id ?? null
   }, [self])
+  // Self's entry in the presence list carries the current picture after a reroll.
+  const selfImage = viewers.find((v) => v.id === self?.id)?.image ?? self?.image
+  useAvatarAccentDetection(selfImage)
 
   const react = useCallback(
     (emoji: Reaction) => {
@@ -180,7 +186,6 @@ export default function PlayerClient({ path, whepUrl }: Props) {
     scheduleControlsHide()
   }, [scheduleControlsHide])
 
-  // Keep the bar up while the pointer rests on it.
   const holdControlsVisible = useCallback(
     (hold: boolean) => {
       controlsHeld.current = hold
@@ -230,8 +235,7 @@ export default function PlayerClient({ path, whepUrl }: Props) {
     }
   }
 
-  function handleVolumeChange(e: ChangeEvent<HTMLInputElement>) {
-    const next = Number(e.target.value)
+  function handleVolumeChange(next: number) {
     setAutoMuted(false)
     setVolume(next)
     setMuted(next === 0)
@@ -245,27 +249,47 @@ export default function PlayerClient({ path, whepUrl }: Props) {
   }, [volume])
 
   return (
-    <div
+    <Box
       ref={containerRef}
-      className={`relative w-full h-full bg-black overflow-hidden select-none ${
-        !isTouchDevice && !controlsVisible ? 'cursor-none' : ''
-      }`}
+      sx={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        bgcolor: 'common.black',
+        overflow: 'hidden',
+        userSelect: 'none',
+        cursor: !isTouchDevice && !controlsVisible ? 'none' : undefined,
+      }}
       onMouseMove={showControls}
       onClick={handleContainerInteraction}
     >
-      <video
+      <Box
+        component="video"
         ref={videoRef}
         autoPlay
         playsInline
         muted={muted}
-        className="w-full h-full object-contain"
+        sx={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
       />
 
       {isLive && <FloatingReactions reactions={floating} />}
 
       {isLive && (
-        <div className="pointer-events-none absolute inset-x-3 top-3 z-20 flex flex-col gap-2 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-start">
-          <div className="order-2 sm:col-start-1 sm:row-start-1">
+        <Box
+          sx={{
+            pointerEvents: 'none',
+            position: 'absolute',
+            insetInline: 12,
+            top: 12,
+            zIndex: 20,
+            display: { xs: 'flex', sm: 'grid' },
+            flexDirection: 'column',
+            gap: 1,
+            gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1fr)',
+            alignItems: { sm: 'start' },
+          }}
+        >
+          <Box sx={{ order: { xs: 2, sm: 0 }, gridColumn: 1, gridRow: 1 }}>
             <AnimatePresence>
               {showViewers && viewers.length > 0 && (
                 <ViewersOverlay
@@ -281,8 +305,18 @@ export default function PlayerClient({ path, whepUrl }: Props) {
                 />
               )}
             </AnimatePresence>
-          </div>
-          <div className="order-1 flex flex-col items-center gap-2 sm:col-start-2 sm:row-start-1">
+          </Box>
+          <Box
+            sx={{
+              order: { xs: 1, sm: 0 },
+              gridColumn: 2,
+              gridRow: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 1,
+            }}
+          >
             <AnimatePresence>
               {autoMuted && (
                 <motion.div
@@ -290,15 +324,30 @@ export default function PlayerClient({ path, whepUrl }: Props) {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -8 }}
                   transition={{ duration: 0.18 }}
-                  className="flex items-center gap-2 rounded-full border border-white/10 bg-black/60 px-3 py-1.5 text-xs font-medium text-white shadow-xl backdrop-blur-md"
                 >
-                  <VolumeX className="h-3.5 w-3.5" />
-                  {isTouchDevice ? 'Tap' : 'Click'} anywhere to unmute
+                  <Box
+                    sx={[
+                      glassSx,
+                      {
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1,
+                        borderRadius: 5,
+                        px: 1.5,
+                        py: 0.75,
+                        fontSize: 12,
+                        fontWeight: 500,
+                      },
+                    ]}
+                  >
+                    <VolumeX size={14} />
+                    {isTouchDevice ? 'Tap' : 'Click'} anywhere to unmute
+                  </Box>
                 </motion.div>
               )}
             </AnimatePresence>
-          </div>
-        </div>
+          </Box>
+        </Box>
       )}
 
       {/* Mobile reaction tray */}
@@ -310,31 +359,59 @@ export default function PlayerClient({ path, whepUrl }: Props) {
             exit={{ opacity: 0, y: 16 }}
             transition={{ duration: 0.18 }}
             onClick={(e) => e.stopPropagation()}
-            className="absolute inset-x-0 bottom-4 z-20 mx-auto flex w-fit max-w-[calc(100%-2rem)] items-center gap-1 rounded-2xl border border-white/10 bg-black/70 p-1.5 shadow-2xl backdrop-blur-xl"
+            style={{
+              position: 'absolute',
+              insetInline: 0,
+              bottom: 16,
+              zIndex: 20,
+              marginInline: 'auto',
+              width: 'fit-content',
+              maxWidth: 'calc(100% - 2rem)',
+            }}
           >
-            <ReactionBar
-              disabled={!canReact}
-              onReact={react}
-              size="lg"
-              className="grid grid-cols-4 gap-0.5 sm:flex"
-            />
-            <button
-              type="button"
-              onClick={() => setReactionTrayOpen(false)}
-              aria-label="Close reactions"
-              className="flex h-11 w-9 items-center justify-center rounded-xl text-white/60 hover:bg-white/10 hover:text-white"
+            <Box
+              sx={[
+                accentGlassSx,
+                {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 0.5,
+                  borderRadius: 4,
+                  p: 0.75,
+                },
+              ]}
             >
-              <X className="h-5 w-5" />
-            </button>
+              <ReactionBar
+                disabled={!canReact}
+                onReact={react}
+                size="lg"
+                sx={{
+                  display: { xs: 'grid', sm: 'flex' },
+                  gridTemplateColumns: 'repeat(4, 1fr)',
+                  gap: '2px',
+                }}
+              />
+              <IconButton
+                onClick={() => setReactionTrayOpen(false)}
+                aria-label="Close reactions"
+                sx={{
+                  height: 44,
+                  width: 36,
+                  borderRadius: 3,
+                  color: 'rgba(255, 255, 255, 0.6)',
+                  '&:hover': { bgcolor: accentAlpha(0.2), color: 'common.white' },
+                }}
+              >
+                <X size={20} />
+              </IconButton>
+            </Box>
           </motion.div>
         )}
       </AnimatePresence>
 
       <PlayerStatusOverlay status={status} />
 
-      {/* Desktop player controls */}
       {!isTouchDevice && (
-        <div className="hidden sm:block">
           <PlayerControls
             visible={controlsVisible}
             onHoldVisible={holdControlsVisible}
@@ -354,11 +431,9 @@ export default function PlayerClient({ path, whepUrl }: Props) {
             stats={stats}
             warnings={warnings}
           />
-        </div>
       )}
 
-      {/* Mobile edge swipeable tab & panel */}
-      <div className={isTouchDevice ? 'block' : 'hidden max-md:block'}>
+      <Box sx={{ display: isTouchDevice ? 'block' : { xs: 'block', md: 'none' } }}>
         <MobileEdgePanel
           isMuted={muted}
           isFullscreen={isFullscreen}
@@ -371,7 +446,7 @@ export default function PlayerClient({ path, whepUrl }: Props) {
           onToggleViewers={toggleShowViewers}
           quality={quality}
         />
-      </div>
-    </div>
+      </Box>
+    </Box>
   )
 }

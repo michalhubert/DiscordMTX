@@ -39,7 +39,6 @@ export async function POST(
     )
   }
 
-  // Check if viewer is approved for private streams
   if (user.role !== 'streamer' && getPathVisibility(path) === 'private') {
     if (!isApproved(path, ip, user.role)) {
       return new Response('Access not approved', { status: 403 })

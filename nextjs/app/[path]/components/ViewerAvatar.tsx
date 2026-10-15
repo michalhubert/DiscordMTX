@@ -1,14 +1,16 @@
+import Avatar from '@mui/material/Avatar'
+import type { SxProps, Theme } from '@mui/material/styles'
 import type { WatchViewer } from '@/lib/watchRoomShared'
 
 const FALLBACK_COLORS = [
-  'bg-rose-500',
-  'bg-amber-500',
-  'bg-emerald-500',
-  'bg-sky-500',
-  'bg-violet-500',
-  'bg-fuchsia-500',
-  'bg-teal-500',
-  'bg-orange-500',
+  '#f43f5e',
+  '#f59e0b',
+  '#10b981',
+  '#0ea5e9',
+  '#8b5cf6',
+  '#d946ef',
+  '#14b8a6',
+  '#f97316',
 ]
 
 function initials(name: string): string {
@@ -18,33 +20,39 @@ function initials(name: string): string {
 
 interface Props {
   viewer: WatchViewer
-  className?: string
+  size?: number
+  sx?: SxProps<Theme>
 }
 
-export default function ViewerAvatar({ viewer, className = 'h-6 w-6' }: Props) {
-  if (viewer.image) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={viewer.image}
-        alt=""
-        referrerPolicy="no-referrer"
-        className={`${className} shrink-0 rounded-full object-cover ring-1 ring-white/20`}
-      />
-    )
-  }
-
+export default function ViewerAvatar({ viewer, size = 24, sx }: Props) {
   const color =
-    FALLBACK_COLORS[
-      parseInt(viewer.id.slice(0, 2), 16) % FALLBACK_COLORS.length
-    ]
+    viewer.role === 'streamer'
+      ? '#ef4444'
+      : FALLBACK_COLORS[
+          parseInt(viewer.id.slice(0, 2), 16) % FALLBACK_COLORS.length
+        ]
+
   return (
-    <span
-      className={`${className} ${
-        viewer.role === 'streamer' ? 'bg-red-500' : color
-      } flex shrink-0 items-center justify-center rounded-full text-[0.6em] font-semibold uppercase text-white ring-1 ring-white/20`}
+    <Avatar
+      src={viewer.image ?? undefined}
+      alt=""
+      slotProps={{ img: { referrerPolicy: 'no-referrer' } }}
+      sx={[
+        {
+          width: size,
+          height: size,
+          flexShrink: 0,
+          fontSize: size * 0.4,
+          fontWeight: 600,
+          textTransform: 'uppercase',
+          color: '#fff',
+          bgcolor: viewer.image ? 'transparent' : color,
+          boxShadow: '0 0 0 1px rgba(255,255,255,0.2)',
+        },
+        ...(Array.isArray(sx) ? sx : [sx]),
+      ]}
     >
       {initials(viewer.name)}
-    </span>
+    </Avatar>
   )
 }

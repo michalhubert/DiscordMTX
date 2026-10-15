@@ -1,4 +1,7 @@
-import { AlertTriangle, Loader2, WifiOff } from 'lucide-react'
+import CircularProgress from '@mui/material/CircularProgress'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
+import { AlertTriangle, WifiOff } from 'lucide-react'
 import type { PlayerStatus } from '../hooks/useWhepPlayer'
 
 interface Props {
@@ -17,25 +20,31 @@ export default function PlayerStatusOverlay({ status }: Props) {
   if (status === 'connected') return null
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 gap-3">
-      <StatusIcon status={status} className="w-10 h-10 text-gray-300" />
-      <p className="text-white text-lg font-medium">{statusLabels[status]}</p>
-    </div>
+    <Stack
+      spacing={1.5}
+      sx={{
+        position: 'absolute',
+        inset: 0,
+        alignItems: 'center',
+        justifyContent: 'center',
+        bgcolor: 'rgba(0,0,0,0.8)',
+        color: 'text.secondary',
+      }}
+    >
+      <StatusIcon status={status} />
+      <Typography variant="h6" component="p" color="text.primary" sx={{ fontWeight: 500 }}>
+        {statusLabels[status]}
+      </Typography>
+    </Stack>
   )
 }
 
-function StatusIcon({
-  status,
-  className,
-}: {
-  status: PlayerStatus
-  className?: string
-}) {
+function StatusIcon({ status }: { status: PlayerStatus }) {
   if (status === 'connecting') {
-    return <Loader2 className={`${className ?? ''} animate-spin`} />
+    return <CircularProgress size={36} />
   }
   if (status === 'offline' || status === 'kicked') {
-    return <WifiOff className={className} />
+    return <WifiOff size={40} />
   }
-  return <AlertTriangle className={className} />
+  return <AlertTriangle size={40} />
 }

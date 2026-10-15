@@ -16,7 +16,6 @@ export function kickViewerIp(path: string, ip: string, role?: string): void {
   kickedViewers.set(key(path, ip, role), Date.now() + getCooldownMs());
 }
 
-// Returns the cooldown end timestamp if this viewer is still banned, or null otherwise.
 export function getKickInfo(path: string, ip: string, role?: string): { kickedUntil: number } | null {
   const k = key(path, ip, role);
   const until = kickedViewers.get(k);

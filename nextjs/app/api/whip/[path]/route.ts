@@ -31,7 +31,6 @@ export async function POST(
   const { path } = await params
   const upstream = `${mediamtxBase()}/${path}/whip`
 
-  // Create stream session record (cascade will handle denial records when deleted)
   createStreamSession(path)
 
   // A fresh stream is a new "session" for access purposes - previously
@@ -88,7 +87,6 @@ export async function DELETE(
 
   const upstream = `${mediamtxBase()}/${path}/whip/${resourceId}`
 
-  // Delete stream session (cascade will automatically delete denial records)
   deleteStreamSession(path)
 
   // Once the stream ends, any previously approved viewers must re-request

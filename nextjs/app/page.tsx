@@ -1,4 +1,6 @@
 import { redirect } from 'next/navigation'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
 import { auth } from '@/lib/auth'
 import { Satellite } from 'lucide-react'
 
@@ -42,14 +44,20 @@ export default async function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-      <div className="text-center">
-        <div className="flex items-center justify-center gap-3 mb-4">
-          <Satellite className="w-7 h-7 text-gray-600" />
-          <h1 className="text-white text-2xl font-semibold">DiscordMTX</h1>
-        </div>
-        <p className="text-gray-400 text-sm">No stream is currently running.</p>
-      </div>
-    </div>
+    <Stack
+      sx={{ minHeight: '100vh', alignItems: 'center', justifyContent: 'center' }}
+    >
+      <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 2 }}>
+        <Typography component="span" color="text.disabled" sx={{ display: 'flex' }}>
+          <Satellite size={28} />
+        </Typography>
+        <Typography variant="h5" component="h1" sx={{ fontWeight: 600 }}>
+          DiscordMTX
+        </Typography>
+      </Stack>
+      <Typography variant="body2" color="text.secondary">
+        No stream is currently running.
+      </Typography>
+    </Stack>
   )
 }

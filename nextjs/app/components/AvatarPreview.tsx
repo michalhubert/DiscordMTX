@@ -2,6 +2,10 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import Box from '@mui/material/Box'
+import type { SxProps, Theme } from '@mui/material/styles'
+import Typography from '@mui/material/Typography'
+import { popupSx } from '@/lib/theme'
 
 const PREVIEW_WIDTH = 208
 // Image + caption, used to keep the card on screen.
@@ -23,7 +27,7 @@ function largeAvatarUrl(url: string): string {
 interface Props {
   image: string | null
   name: string
-  className?: string
+  sx?: SxProps<Theme>
   children: ReactNode
 }
 
@@ -32,7 +36,7 @@ interface Props {
 export default function AvatarPreview({
   image,
   name,
-  className,
+  sx,
   children,
 }: Props) {
   const anchorRef = useRef<HTMLSpanElement>(null)
@@ -71,7 +75,6 @@ export default function AvatarPreview({
     setLoaded(false)
   }
 
-  // Tapping elsewhere or scrolling closes it.
   useEffect(() => {
     if (!position) return
     function handlePointerDown(e: PointerEvent) {
@@ -87,9 +90,10 @@ export default function AvatarPreview({
 
   return (
     <>
-      <span
+      <Box
+        component="span"
         ref={anchorRef}
-        className={className}
+        sx={sx}
         onPointerEnter={(e) => e.pointerType === 'mouse' && open()}
         onPointerLeave={(e) => e.pointerType === 'mouse' && close()}
         onClick={(e) => {
@@ -100,36 +104,62 @@ export default function AvatarPreview({
         }}
       >
         {children}
-      </span>
+      </Box>
 
       {position &&
         image &&
         createPortal(
-          <div
+          <Box
             role="tooltip"
-            className="pointer-events-none fixed z-[100] rounded-xl bg-neutral-900/95 p-2 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl"
+            sx={[
+              popupSx,
+              {
+                pointerEvents: 'none',
+                position: 'fixed',
+                zIndex: 'tooltip',
+                borderRadius: 3,
+                p: 1,
+              },
+            ]}
             style={{
               left: position.left,
               top: position.top,
               width: PREVIEW_WIDTH,
             }}
           >
-            <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-white/5">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+            <Box
+              sx={{
+                display: 'flex',
+                aspectRatio: '1',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden',
+                borderRadius: 2,
+                bgcolor: 'rgba(255,255,255,0.05)',
+              }}
+            >
+              <Box
+                component="img"
                 src={largeAvatarUrl(image)}
                 alt=""
                 referrerPolicy="no-referrer"
                 onLoad={() => setLoaded(true)}
-                className={`max-h-full max-w-full object-contain transition-opacity duration-200 ${
-                  loaded ? 'opacity-100' : 'opacity-0'
-                }`}
+                sx={{
+                  maxHeight: '100%',
+                  maxWidth: '100%',
+                  objectFit: 'contain',
+                  transition: 'opacity 200ms',
+                  opacity: loaded ? 1 : 0,
+                }}
               />
-            </div>
-            <p className="mt-2 truncate px-1 text-center text-xs font-medium text-white">
+            </Box>
+            <Typography
+              noWrap
+              sx={{ mt: 1, px: 0.5, textAlign: 'center', fontSize: 12, fontWeight: 500 }}
+            >
               {name}
-            </p>
-          </div>,
+            </Typography>
+          </Box>,
           document.fullscreenElement ?? document.body,
         )}
     </>

@@ -93,7 +93,6 @@ export async function DELETE(req: NextRequest) {
   const identity = getViewerIdentity(sessionId)
   if (identity?.ip && identity.path) {
     kickViewerIp(identity.path, identity.ip, identity.role)
-    // Revoke access approval for this specific kicked viewer on that path.
     revokeApproval(identity.path, identity.ip, identity.role)
     disconnectWatchViewer(identity.path, identity.ip, identity.role)
   }
