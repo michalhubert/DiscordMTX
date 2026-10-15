@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type MouseEvent } from 'react'
+import { useEffect, useState, type MouseEvent } from 'react'
 import Box from '@mui/material/Box'
 import ButtonBase from '@mui/material/ButtonBase'
 import IconButton, { type IconButtonProps } from '@mui/material/IconButton'
@@ -37,7 +37,7 @@ function Swatch({
         bgcolor: color,
         color: '#fff',
         boxShadow: selected
-          ? `0 0 0 2px #16161c, 0 0 0 4px ${color}`
+          ? `0 0 0 2px var(--mui-palette-background-paper), 0 0 0 4px ${color}`
           : 'inset 0 0 0 1px rgba(255,255,255,0.15)',
         transition: 'transform 120ms, box-shadow 120ms',
         '&:hover': { transform: 'scale(1.1)' },
@@ -60,7 +60,19 @@ export function AccentPickerPopover({ anchorEl, onClose }: PopoverProps) {
   const customAccent = studio ? store.studioAccent : store.customAccent
   const setCustomAccent = studio ? store.setStudioAccent : store.setCustomAccent
   const isCustom = studio || !followsAvatar(store)
-  const customIsPreset = ACCENT_PRESETS.includes(customAccent.toLowerCase())
+  // The colour input fires on every drag tick; each commit rebuilds the theme.
+  const [draft, setDraft] = useState<string | null>(null)
+  const shownCustom = draft ?? customAccent
+  const customIsPreset = ACCENT_PRESETS.includes(shownCustom.toLowerCase())
+
+  useEffect(() => {
+    if (draft === null) return
+    const timeout = setTimeout(() => {
+      setCustomAccent(draft)
+      setDraft(null)
+    }, 150)
+    return () => clearTimeout(timeout)
+  }, [draft, setCustomAccent])
 
   return (
     <Popover
@@ -163,11 +175,11 @@ export function AccentPickerPopover({ anchorEl, onClose }: PopoverProps) {
               color: '#fff',
               background:
                 isCustom && !customIsPreset
-                  ? customAccent
+                  ? shownCustom
                   : 'conic-gradient(#ef4444, #f59e0b, #22c55e, #38bdf8, #8b5cf6, #ec4899, #ef4444)',
               boxShadow:
                 isCustom && !customIsPreset
-                  ? `0 0 0 2px #16161c, 0 0 0 4px ${customAccent}`
+                  ? `0 0 0 2px var(--mui-palette-background-paper), 0 0 0 4px ${shownCustom}`
                   : 'none',
               '&:hover': { transform: 'scale(1.1)' },
               transition: 'transform 120ms',
@@ -177,8 +189,8 @@ export function AccentPickerPopover({ anchorEl, onClose }: PopoverProps) {
             <Box
               component="input"
               type="color"
-              value={customAccent}
-              onChange={(e) => setCustomAccent(e.target.value)}
+              value={shownCustom}
+              onChange={(e) => setDraft(e.target.value)}
               aria-label="Custom accent colour"
               sx={{
                 position: 'absolute',

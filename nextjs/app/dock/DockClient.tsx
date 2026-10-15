@@ -917,23 +917,15 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
 
 type Tone = 'success' | 'error' | 'warning' | 'info'
 
-// Matches palette.{tone}.main in lib/theme.
-const TONE_RGB: Record<Tone, string> = {
-  success: '34 197 94',
-  error: '239 68 68',
-  warning: '245 158 11',
-  info: '56 189 248',
-}
-
 function tintedChipSx(tone: Tone) {
   return {
-    bgcolor: `rgb(${TONE_RGB[tone]} / 0.15)`,
+    bgcolor: accentAlpha(0.15, tone),
     color: `${tone}.light`,
     fontWeight: 600,
     fontSize: 11,
     textTransform: 'uppercase',
     '& .MuiChip-icon': { color: 'inherit', ml: 1 },
-    '&:hover': { bgcolor: `rgb(${TONE_RGB[tone]} / 0.25)` },
+    '&:hover': { bgcolor: accentAlpha(0.25, tone) },
   } as const
 }
 
@@ -946,9 +938,9 @@ function tintedButtonSx(tone: Tone) {
     fontSize: 11,
     fontWeight: 600,
     lineHeight: 1.4,
-    bgcolor: `rgb(${TONE_RGB[tone]} / 0.18)`,
+    bgcolor: accentAlpha(0.18, tone),
     color: `${tone}.light`,
-    '&:hover': { bgcolor: `rgb(${TONE_RGB[tone]} / 0.3)` },
+    '&:hover': { bgcolor: accentAlpha(0.3, tone) },
     '&.Mui-disabled': { color: `${tone}.light`, opacity: 0.4 },
   } as const
 }
@@ -981,7 +973,7 @@ function StatusPill({ live, label }: { live: boolean; label: string }) {
         fontSize: 11,
         fontWeight: 600,
         textTransform: 'uppercase',
-        bgcolor: live ? `rgb(${TONE_RGB.success} / 0.15)` : 'rgba(255, 255, 255, 0.06)',
+        bgcolor: live ? accentAlpha(0.15, 'success') : 'rgba(255, 255, 255, 0.06)',
         color: live ? 'success.main' : 'text.secondary',
       }}
     >

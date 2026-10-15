@@ -37,8 +37,13 @@ export function isHexColor(value: unknown): value is string {
 
 // Theme colours are CSS variables, so translucent tints follow accent changes
 // without regenerating any component styles.
-export function accentAlpha(opacity: number): string {
-  return `rgba(var(--mui-palette-primary-mainChannel) / ${opacity})`
+type PaletteTone = 'primary' | 'success' | 'error' | 'warning' | 'info'
+
+export function accentAlpha(
+  opacity: number,
+  tone: PaletteTone = 'primary',
+): string {
+  return `rgba(var(--mui-palette-${tone}-mainChannel) / ${opacity})`
 }
 
 export const glassSx = {
@@ -67,7 +72,12 @@ export const popupSx = {
 // Portals land inside the fullscreen element when there is one, otherwise
 // popups opened from the player would be invisible in fullscreen. Only called
 // client-side, when the portal mounts.
-const portalContainer = () => document.fullscreenElement ?? document.body
+const portalContainer = () => {
+  const doc = document as Document & { webkitFullscreenElement?: Element | null }
+  const element = doc.fullscreenElement ?? doc.webkitFullscreenElement
+  // A fullscreen <video> can't contain popups.
+  return element && !(element instanceof HTMLVideoElement) ? element : document.body
+}
 
 export function createAppTheme(accent: string) {
   return createTheme({

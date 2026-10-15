@@ -40,10 +40,10 @@ interface Props {
 const PANEL_WIDTH = 112
 
 const tones = {
-  amber: { fg: '#fcd34d', tint: (o: number) => `rgba(245, 158, 11, ${o})` },
-  accent: { fg: 'primary.light', tint: accentAlpha },
-  red: { fg: '#fca5a5', tint: (o: number) => `rgba(239, 68, 68, ${o})` },
-  sky: { fg: '#7dd3fc', tint: (o: number) => `rgba(14, 165, 233, ${o})` },
+  amber: { fg: 'warning.light', tint: (o: number) => accentAlpha(o, 'warning') },
+  accent: { fg: 'primary.light', tint: (o: number) => accentAlpha(o) },
+  red: { fg: 'error.light', tint: (o: number) => accentAlpha(o, 'error') },
+  sky: { fg: 'info.light', tint: (o: number) => accentAlpha(o, 'info') },
 }
 
 function PanelButton({

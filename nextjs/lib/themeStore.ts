@@ -51,7 +51,7 @@ export const useThemeStore = create<ThemeState>()(
 )
 
 export function followsAvatar(state: ThemeState): boolean {
-  return state.accentMode === 'avatar' && state.avatarAccentAvailable
+  return state.accentMode === 'avatar' && state.avatarAccent !== null
 }
 
 export function useAccentScope(): AccentScope {
@@ -60,6 +60,7 @@ export function useAccentScope(): AccentScope {
 
 export function resolveAccent(state: ThemeState, scope: AccentScope): string {
   if (scope === 'studio') return state.studioAccent
-  if (!followsAvatar(state)) return state.customAccent
-  return state.avatarAccent ?? DEFAULT_ACCENT
+  return followsAvatar(state) && state.avatarAccent
+    ? state.avatarAccent
+    : state.customAccent
 }

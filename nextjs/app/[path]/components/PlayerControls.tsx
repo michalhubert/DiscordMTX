@@ -1,6 +1,5 @@
-import type { ReactNode } from 'react'
 import Box from '@mui/material/Box'
-import ButtonBase from '@mui/material/ButtonBase'
+import ButtonBase, { type ButtonBaseProps } from '@mui/material/ButtonBase'
 import Slider from '@mui/material/Slider'
 import { keyframes } from '@mui/material/styles'
 import {
@@ -67,25 +66,17 @@ const controlButtonSx = {
 }
 
 function ControlButton({
-  onClick,
   label,
   pressed,
-  children,
-}: {
-  onClick: () => void
-  label: string
-  pressed?: boolean
-  children: ReactNode
-}) {
+  ...props
+}: ButtonBaseProps & { label: string; pressed?: boolean }) {
   return (
     <ButtonBase
-      onClick={onClick}
+      {...props}
       aria-label={label}
       aria-pressed={pressed}
       sx={controlButtonSx}
-    >
-      {children}
-    </ButtonBase>
+    />
   )
 }
 
