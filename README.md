@@ -436,4 +436,4 @@ Keep in mind that HTTPS proxying and WebRTC are separate connections. Cloudflare
 
 ## Note
 
-Next.js part of the project was done using AI tools, the frontend part will be refactored manually in the future.
+Built with help from Claude Code.
