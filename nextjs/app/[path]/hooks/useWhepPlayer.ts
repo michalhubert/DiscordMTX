@@ -14,8 +14,9 @@ interface UseWhepPlayerOptions {
 
 const RETRY_MIN_MS = 500
 const RETRY_MAX_MS = 5000
-// Fallback for a missed online push.
-const OFFLINE_RETRY_MS = 15000
+// While offline (a fallback for a missed online push), and after errors that
+// retrying soon won't fix.
+const SLOW_RETRY_MS = 15000
 // "disconnected" often recovers by itself.
 const DISCONNECT_GRACE_MS = 2500
 
@@ -52,24 +53,22 @@ export function useWhepPlayer({
       clearTimers()
       pcRef.current?.close()
       pcRef.current = null
-      sessionIdRef.current = null
-    }
-
-    // Closing the connection doesn't reliably reach MediaMTX.
-    function endSession() {
+      // Closing doesn't reliably reach MediaMTX; a failed attempt would linger.
       const sessionId = sessionIdRef.current
-      if (!sessionId) return
-      navigator.sendBeacon(
-        `${whepUrl}/leave`,
-        new Blob([JSON.stringify({ sessionId })], { type: 'application/json' }),
-      )
+      sessionIdRef.current = null
+      if (sessionId) {
+        navigator.sendBeacon(
+          `${whepUrl}/leave`,
+          new Blob([JSON.stringify({ sessionId })], { type: 'application/json' }),
+        )
+      }
     }
 
-    function retryLater() {
+    function retryLater(slow = false) {
       clearTimers()
       const delay =
-        onlineRef.current === false
-          ? OFFLINE_RETRY_MS
+        slow || onlineRef.current === false
+          ? SLOW_RETRY_MS
           : Math.min(RETRY_MIN_MS * 2 ** failures++, RETRY_MAX_MS)
       retryTimeout = setTimeout(connect, delay)
     }
@@ -142,9 +141,11 @@ export function useWhepPlayer({
             handleDenied()
             return
           }
-          setStatus(res.status === 404 || res.status === 503 ? 'offline' : 'error')
+          const offline = res.status === 404 || res.status === 503
+          if (!offline) console.error(`Playback refused (HTTP ${res.status}):`, await res.text())
+          setStatus(offline ? 'offline' : 'error')
           closeConnection()
-          retryLater()
+          retryLater(!offline && res.status < 500)
           return
         }
 
@@ -158,9 +159,11 @@ export function useWhepPlayer({
         if (!isStale() && pc.connectionState === 'connected') {
           setStatus('connected')
         }
-      } catch {
+      } catch (err) {
         if (!isStale()) {
+          console.error('Playback failed:', err)
           setStatus('error')
+          closeConnection()
           retryLater()
         }
       }
@@ -182,10 +185,7 @@ export function useWhepPlayer({
       },
     }
 
-    function onPageHide() {
-      endSession()
-      closeConnection()
-    }
+    const onPageHide = () => closeConnection()
 
     // Back/forward cache restores the page without re-running effects.
     function onPageShow(event: PageTransitionEvent) {
@@ -201,7 +201,6 @@ export function useWhepPlayer({
       controlsRef.current = null
       window.removeEventListener('pagehide', onPageHide)
       window.removeEventListener('pageshow', onPageShow)
-      endSession()
       closeConnection()
     }
   }, [whepUrl, videoRef])

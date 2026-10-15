@@ -213,7 +213,6 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
   const availablePaths = snapshot?.paths ?? []
   const currentPath = snapshot?.currentPath ?? ''
   const viewerPassword = snapshot?.viewerPassword ?? null
-  const viewerCount = snapshot?.viewerCount ?? 0
 
   let status: HudStatus = 'checking'
   if (snapshot) {
@@ -393,7 +392,7 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
           Active Viewers
         </Typography>
         <Typography sx={{ fontSize: 20, fontWeight: 700, color: 'success.main', lineHeight: 1.2 }}>
-          {viewerCount}
+          {readers.length}
         </Typography>
       </Card>
 

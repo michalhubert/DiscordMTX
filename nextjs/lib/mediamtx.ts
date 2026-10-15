@@ -58,7 +58,6 @@ export type PathItem = {
   name: string;
   ready?: boolean;
   readyTime?: string;
-  readers?: unknown[];
   [key: string]: unknown;
 };
 
@@ -71,6 +70,7 @@ export type WebrtcSessionItem = {
   id: string;
   path?: string;
   state?: string;
+  peerConnectionEstablished?: boolean;
   user?: string;
   [key: string]: unknown;
 };

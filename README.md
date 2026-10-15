@@ -300,6 +300,8 @@ MediaMTX configuration:
 mediamtx.yml
 ```
 
+Only WebRTC is enabled (WHIP for publishing, WHEP for playback); MediaMTX's RTSP, RTMP, HLS, SRT and MoQ servers are turned off in `mediamtx.yml`.
+
 MediaMTX natively supports configuration through [environment variables](https://mediamtx.org/docs/features/configuration) in the format `MTX_PARAMNAME`. Instead of rendering a full configuration file, `entrypoint.sh` exports the required `MTX_*` variables (derived from the environment and `paths.yml`, if present) and lets MediaMTX apply them on top of `mediamtx.yml` at startup.
 
 ### UDP Buffer Tuning (WebRTC packet loss)

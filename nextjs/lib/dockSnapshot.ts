@@ -29,7 +29,6 @@ export type DockSnapshot = {
   mediamtxReachable: boolean;
   paths: string[];
   livePaths: string[];
-  viewerCount: number;
   viewers: DockViewer[];
   pending: PendingRequest[];
   visibility: Record<string, PathVisibility>;
@@ -66,17 +65,15 @@ export async function dockSnapshot(): Promise<DockSnapshot> {
   ]);
 
   if (sessions) pruneViewerIdentities(sessions.map((s) => s.id));
-  const readers = (sessions ?? []).filter((s) => s.state !== undefined && s.state !== "publish");
+  // Attempts that never connect would otherwise show up as a join and a leave.
+  const readers = (sessions ?? []).filter((s) => s.peerConnectionEstablished && s.state === "read");
   const livePaths = (livePathItems ?? []).filter((p) => p.ready).map((p) => p.name);
-  // Includes non-WebRTC readers (e.g. RTSP).
-  const pathReaders = (livePathItems ?? []).reduce((sum, p) => sum + (p.readers?.length ?? 0), 0);
 
   const currentPath = livePaths[0] ?? null;
   return {
     mediamtxReachable: !!(livePathItems && sessions),
     paths: pathNames(configured, livePathItems),
     livePaths,
-    viewerCount: Math.max(readers.length, pathReaders),
     viewers: readers.map(toDockViewer),
     pending: listPendingRequests(),
     visibility: getAllPathVisibilities(),

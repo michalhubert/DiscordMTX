@@ -14,6 +14,13 @@ authInternalUsers:
       - action: api
       - action: metrics
 
+# Only WebRTC is used (WHIP publishing, WHEP playback through Next.js).
+rtsp: false
+rtmp: false
+hls: false
+srt: false
+moq: false
+
 webrtc: true
 webrtcAddress: :8889
 webrtcLocalUDPAddress: :8189
