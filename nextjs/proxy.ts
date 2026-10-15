@@ -10,7 +10,6 @@ const DOCK_PREFIXES = [
   '/api/mediamtx',
   '/api/dock',
   '/api/stream',
-  '/api/streams/hook',
   '/api/whip',
 ]
 
@@ -19,6 +18,8 @@ export const proxy = auth((req) => {
   const isLoggedIn = !!req.auth?.user
   const isLoginPage = pathname.startsWith('/login')
   const isAuthApi = pathname.startsWith('/api/auth')
+  // MediaMTX has no session; the route checks HOOK_SECRET itself.
+  if (pathname === '/api/streams/hook') return NextResponse.next()
   const isDockArea = DOCK_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(prefix + '/'),
   )
