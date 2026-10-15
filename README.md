@@ -23,6 +23,7 @@ FFmpeg transcoding may be added in the future.
 * Live emoji reactions that float over the player for every viewer (buttons or keys `1`-`8`)
 * Toggleable "who's watching" overlay (button or `V`), with Discord avatars
 * Connection warnings for viewers (packet loss, stalls, high latency, freezes, dropped frames, going offline) plus a signal indicator with live stats
+* Everything updates live: kicks, approvals, the stream going on/offline, viewers joining and leaving reach every open page within milliseconds (see [Live updates](#live-updates))
 * Automatic credential generation
 * Docker Compose deployment
 
@@ -104,6 +105,7 @@ docker compose down
 | `WEBRTC_ADDITIONAL_HOSTS` | Addresses advertised to the WebRTC player          |
 | `UDP_READ_BUFFER_SIZE`    | MediaMTX UDP read buffer in bytes (default `1000000`), see [UDP Buffer Tuning](#udp-buffer-tuning-webrtc-packet-loss) |
 | `HOOK_ONLINE` / `HOOK_OFFLINE` / `HOOK_ONLINE_RESTART` | Default stream hooks, see [Hooks](#hooks) |
+| `HOOK_VIEWER`             | Hook run when a viewer starts/stops watching (default `/hooks/stream-viewer.sh`; set empty to turn off), see [Hooks](#hooks) |
 | `NEXTJS_URL`              | Where the stream hooks reach Next.js from the discordmtx container (default `http://nextjs:3000`) |
 | `NEXTJS_PORT`             | Host port exposed by the Next.js frontend          |
 | `MEDIAMTX_HOST`           | Hostname/IP of the discordmtx service the Next.js WHEP/API proxy talks to |
@@ -269,6 +271,7 @@ Each path can have:
 - **hook_online**: Optional custom online hook script path
 - **hook_offline**: Optional custom offline hook script path
 - **hook_online_restart**: Optional boolean for hook restart behavior
+- **hook_viewer**: Optional custom viewer hook script path
 
 Per-path Discord webhooks are configured separately via the `DISCORD_WEBHOOK_URLS` environment variable (see [Configuration](#configuration)), not in `paths.yml`.
 
@@ -313,9 +316,10 @@ Default configuration:
 HOOK_ONLINE=/hooks/stream-online.sh
 HOOK_ONLINE_RESTART=false
 HOOK_OFFLINE=/hooks/stream-offline.sh
+HOOK_VIEWER=/hooks/stream-viewer.sh
 ```
 
-MediaMTX runs the online hook when the stream starts and the offline hook when it stops. Both hooks call the Next.js app's `/api/streams/hook` endpoint at `NEXTJS_URL` (default `http://nextjs:3000`, the compose service name, so changing `container_name` doesn't break it; set it if you rename the service or run Next.js elsewhere). They authenticate with `HOOK_SECRET`, which must be the same on both services. The endpoint - besides initializing/clearing access sessions - owns the Discord webhook message for that path (`lib/discordWebhook.ts`): it posts one message when the stream first goes online, then edits that same message in place on every subsequent online/offline transition instead of posting a new one each time. The message id is persisted in the SQLite database, so edits keep working across restarts, and if the stored message was deleted manually (or the webhook URL changed), a fresh message is posted and tracked instead.
+MediaMTX runs the online hook when the stream starts and the offline hook when it stops. It runs the viewer hook (with `read` or `unread`) whenever someone starts or stops watching, so the dock's viewer list updates at once. All hooks call the Next.js app's `/api/streams/hook` endpoint at `NEXTJS_URL` (default `http://nextjs:3000`, the compose service name, so changing `container_name` doesn't break it; set it if you rename the service or run Next.js elsewhere). They authenticate with `HOOK_SECRET`, which must be the same on both services. The endpoint - besides initializing/clearing access sessions - owns the Discord webhook message for that path (`lib/discordWebhook.ts`): it posts one message when the stream first goes online, then edits that same message in place on every subsequent online/offline transition instead of posting a new one each time. The message id is persisted in the SQLite database, so edits keep working across restarts, and if the stored message was deleted manually (or the webhook URL changed), a fresh message is posted and tracked instead.
 
 Viewer passwords are stored per-path in the SQLite database and can be rotated via the streamer dock (/dock). When a password is rotated, all existing viewer sessions are invalidated and viewers must re-login with the new password. The player URL posted to Discord never contains credentials - viewers enter the password on the Next.js login page.
 
@@ -325,13 +329,27 @@ The Next.js app resolves the Discord webhook to use for the current path from th
 
 A private streamer dashboard is available at `/dock` in the Next.js frontend, gated by its own login (`STREAMER_PASSWORD`) - separate from both the Discord login and the per-stream viewer password, so viewers can never reach it.
 
-It talks to MediaMTX's control API through `/api/mediamtx/*`, a same-origin proxy in the Next.js app (equivalent to the old `/streamer/api/` NGINX proxy to `discordmtx:9997/v3/`).
+The Next.js app reads MediaMTX's control API (`discordmtx:9997/v3/`) for it and pushes the dock everything it shows (see [Live updates](#live-updates)).
 
 Features:
-* Real-time viewer count and stream status (Live / Offline)
+* Live viewer count and stream status (Live / Offline)
 * Connected viewer IP addresses, stream paths, session durations, and transferred data
 * Live activity log showing recent viewer connections and disconnections
 * Optional audio chime synthesized via Web Audio API on viewer join
+* Kicking, approving, denying and switching a stream between public and private take effect at once, both in the dock and for the viewers concerned
+
+## Live updates
+
+Pages don't poll for changes; the server pushes them over [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events):
+
+* The player and the "waiting for approval" screen share one stream per page (`/api/watch/<path>`). It carries whether the viewer may watch (or is waiting, kicked or denied, with the time left) and whether the stream is online, plus the viewer list and reactions. A kicked viewer is moved to the removal screen right away, an approved one straight into the stream, and the player connects as soon as the stream goes live.
+* The dock has its own stream (`/api/dock/events`) with everything it shows.
+* A waiting viewer's request lasts as long as their waiting screen is open: closing it takes them off the dock's pending list immediately.
+* Stream state comes from the MediaMTX hooks (see [Hooks](#hooks)). In case one is missed, for example because of a wrong `HOOK_SECRET`, Next.js also checks MediaMTX every 10 seconds while anyone is watching.
+
+Proxies in front of the Next.js app must not buffer responses for this to work. Responses carry `X-Accel-Buffering: no` for NGINX; other proxies (and Cloudflare) stream them as-is.
+
+All of this state lives in the Next.js server's memory and SQLite database, so run a single Next.js container.
 
 ### Adding to OBS Studio
 1. In OBS Studio, open **Docks** > **Custom Browser Docks...**

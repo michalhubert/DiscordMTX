@@ -4,6 +4,7 @@ import { getClientIp } from '@/lib/net'
 import { type SessionUser } from '@/lib/authz'
 import { watchAccessDenied } from '@/lib/watchAccess'
 import { forwardSdpHeaders, mediamtxWebrtcBase } from '@/lib/mediamtx'
+import { notifyChanged } from '@/lib/events'
 import { NextRequest } from 'next/server'
 
 export async function POST(
@@ -56,6 +57,7 @@ export async function POST(
       discordId: user.role === 'discord' ? user.id : null,
       path,
     })
+    notifyChanged(path)
   }
 
   return new Response(await res.text(), {

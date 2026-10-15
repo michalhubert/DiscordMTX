@@ -23,6 +23,8 @@ mtx_export() {
 HOOK_ONLINE="${HOOK_ONLINE:-/hooks/stream-online.sh}"
 HOOK_ONLINE_RESTART="${HOOK_ONLINE_RESTART:-false}"
 HOOK_OFFLINE="${HOOK_OFFLINE:-/hooks/stream-offline.sh}"
+# Empty turns it off.
+HOOK_VIEWER="${HOOK_VIEWER-/hooks/stream-viewer.sh}"
 export DISCORD_WEBHOOK_URL="${DISCORD_WEBHOOK_URL:-}"
 export DISCORD_WEBHOOK_URLS="${DISCORD_WEBHOOK_URLS:-}"
 
@@ -66,6 +68,7 @@ while [ "$i" -lt "$COUNT" ]; do
   HOOK_ON=$(yq eval ".paths[$i].hook_online // \"${HOOK_ONLINE}\"" "$PATHS_FILE")
   HOOK_OFF=$(yq eval ".paths[$i].hook_offline // \"${HOOK_OFFLINE}\"" "$PATHS_FILE")
   HOOK_RESTART=$(yq eval ".paths[$i].hook_online_restart // \"${HOOK_ONLINE_RESTART}\"" "$PATHS_FILE")
+  HOOK_VIEW=$(yq eval ".paths[$i].hook_viewer // \"${HOOK_VIEWER}\"" "$PATHS_FILE")
 
   # MediaMTX maps map keys to uppercase env var segments, e.g. "desktop" -> "DESKTOP".
   # Path names with "-" or "_" are ambiguous for MediaMTX's env var parser and are not supported.
@@ -81,6 +84,10 @@ while [ "$i" -lt "$COUNT" ]; do
   mtx_export "MTX_PATHS_${ENV_NAME}_RUNONONLINE" "$HOOK_ON"
   mtx_export "MTX_PATHS_${ENV_NAME}_RUNONOFFLINE" "$HOOK_OFF"
   mtx_export "MTX_PATHS_${ENV_NAME}_RUNONONLINERESTART" "$HOOK_RESTART"
+  if [ -n "$HOOK_VIEW" ]; then
+    mtx_export "MTX_PATHS_${ENV_NAME}_RUNONREAD" "$HOOK_VIEW read"
+    mtx_export "MTX_PATHS_${ENV_NAME}_RUNONUNREAD" "$HOOK_VIEW unread"
+  fi
 
   i=$((i + 1))
 done

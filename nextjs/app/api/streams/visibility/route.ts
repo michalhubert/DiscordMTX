@@ -1,20 +1,12 @@
 import { isStreamerAuthorized } from '@/lib/authz'
-import { getAllPathVisibilities, setPathVisibility } from '@/lib/db'
+import { setPathVisibility } from '@/lib/db'
 import { clearApprovedViewers, clearPendingRequests } from '@/lib/accessRequests'
 import { clearDenials } from '@/lib/accessBlocks'
 import { getViewerIdentity } from '@/lib/viewerIdentities'
 import { listWebrtcSessions, kickWebrtcSession } from '@/lib/mediamtx'
-import { disconnectAllWatchViewers } from '@/lib/watchRoom'
 import { PATH_NAME_RE } from '@/lib/streamSettings'
+import { notifyChanged } from '@/lib/events'
 import { NextRequest } from 'next/server'
-
-export async function GET() {
-  if (!(await isStreamerAuthorized())) {
-    return new Response('Unauthorized', { status: 401 })
-  }
-
-  return Response.json(getAllPathVisibilities())
-}
 
 export async function POST(req: NextRequest) {
   if (!(await isStreamerAuthorized())) {
@@ -40,28 +32,29 @@ export async function POST(req: NextRequest) {
   }
 
   setPathVisibility(path, visibility)
+  notifyChanged(path)
 
-  if (visibility === 'private') {
-    clearApprovedViewers(path)
-  } else {
+  if (visibility === 'public') {
     clearPendingRequests(path)
     clearDenials(path)
+    return Response.json({ path, visibility })
   }
 
+  // Also cuts off pages that ignore the push.
+  clearApprovedViewers(path)
   const sessions = await listWebrtcSessions()
-  for (const item of sessions) {
-    const identity = getViewerIdentity(item.id)
-    if (
-      (identity?.path === path || item.path === path) &&
-      identity?.role !== 'streamer' &&
-      item.user !== 'streamer' &&
-      !item.publish
-    ) {
-      await kickWebrtcSession(item.id)
-    }
-  }
-
-  disconnectAllWatchViewers(path)
+  await Promise.all(
+    sessions
+      .filter((item) => {
+        const identity = getViewerIdentity(item.id)
+        return (
+          (identity?.path ?? item.path) === path &&
+          identity?.role !== 'streamer' &&
+          item.state !== 'publish'
+        )
+      })
+      .map((item) => kickWebrtcSession(item.id)),
+  )
 
   return Response.json({ path, visibility })
 }

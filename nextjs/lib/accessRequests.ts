@@ -12,8 +12,7 @@ import {
   touchAccessRequest,
 } from "./db";
 import { clearBlock, denyViewer } from "./accessBlocks";
-
-export type AccessStatus = "approved" | "pending";
+import { ALL_PATHS, notifyChanged } from "./events";
 
 export type PendingRequest = {
   ip: string;
@@ -24,28 +23,60 @@ export type PendingRequest = {
   requestedAt: number;
 };
 
-const STALE_MS = 2 * 60 * 1000;
+export type AccessRequester = {
+  path: string;
+  ip: string;
+  role?: string;
+  name: string | null;
+  image: string | null;
+  discordId: string | null;
+};
+
+// Only for requests left behind by a restart.
+const STALE_MS = 45 * 1000;
 
 const roleKey = (role?: string) => role ?? "guest";
+const requestKey = (path: string, ip: string, role?: string) => `${path}\n${ip}\n${roleKey(role)}`;
+
+// Per request; one person can have several tabs.
+const store = globalThis as typeof globalThis & { __openAccessRequests?: Map<string, number> };
+const openRequests = (store.__openAccessRequests ??= new Map<string, number>());
 
 export function isApproved(path: string, ip: string, role?: string): boolean {
   return isViewerApproved(path, ip, roleKey(role));
 }
 
-export function requestAccess(
-  path: string,
-  ip: string,
-  name: string | null,
-  image: string | null,
-  role?: string,
-  discordId?: string | null
-): AccessStatus {
-  if (isApproved(path, ip, role)) return "approved";
+function touch(r: AccessRequester): void {
   touchAccessRequest(
-    { path, ip, role: roleKey(role), name, image, discord_id: discordId ?? null },
+    { path: r.path, ip: r.ip, role: roleKey(r.role), name: r.name, image: r.image, discord_id: r.discordId },
     Date.now()
   );
-  return "pending";
+}
+
+export function openAccessRequest(r: AccessRequester): void {
+  const key = requestKey(r.path, r.ip, r.role);
+  openRequests.set(key, (openRequests.get(key) ?? 0) + 1);
+  const isNew = !getAccessRequest(r.path, r.ip, roleKey(r.role));
+  touch(r);
+  if (isNew) notifyChanged(r.path);
+}
+
+// Only refreshes: an answered or cleared request stays gone.
+export function keepAccessRequest(r: AccessRequester): void {
+  if (getAccessRequest(r.path, r.ip, roleKey(r.role))) touch(r);
+}
+
+export function closeAccessRequest(r: AccessRequester): void {
+  const key = requestKey(r.path, r.ip, r.role);
+  const remaining = (openRequests.get(key) ?? 1) - 1;
+  if (remaining > 0) {
+    openRequests.set(key, remaining);
+    return;
+  }
+  openRequests.delete(key);
+  if (!getAccessRequest(r.path, r.ip, roleKey(r.role))) return;
+  deleteAccessRequest(r.path, r.ip, roleKey(r.role));
+  notifyChanged(r.path);
 }
 
 export function approveAccess(path: string, ip: string, role?: string): void {
@@ -53,6 +84,7 @@ export function approveAccess(path: string, ip: string, role?: string): void {
   approveViewer(path, ip, roleKey(role));
   deleteAccessRequest(path, ip, roleKey(role));
   clearBlock(path, { role, ip, discordId });
+  notifyChanged(path);
 }
 
 export function denyAccess(path: string, ip: string, role?: string): void {
@@ -64,6 +96,7 @@ export function denyAccess(path: string, ip: string, role?: string): void {
 
 export function revokeApproval(path: string, ip: string, role?: string): void {
   deleteApproval(path, ip, roleKey(role));
+  notifyChanged(path);
 }
 
 export function listPendingRequests(): PendingRequest[] {
@@ -79,10 +112,12 @@ export function listPendingRequests(): PendingRequest[] {
 
 export function clearApprovedViewers(path: string): void {
   deleteApprovalsForPath(path);
+  notifyChanged(path);
 }
 
 export function clearPendingRequests(path: string): void {
   deleteAccessRequestsForPath(path);
+  notifyChanged(path);
 }
 
 // Rotating the password for `rotatedPath` also invalidates any other path that has no
@@ -98,4 +133,5 @@ export function clearApprovedPasswordViewers(rotatedPath: string): void {
       deleteApproval(a.path, a.ip, a.role);
     }
   }
+  notifyChanged(ALL_PATHS);
 }

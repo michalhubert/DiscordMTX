@@ -7,6 +7,7 @@ import {
   setAccessBlock,
   type AccessBlockRow,
 } from "./db";
+import { notifyChanged } from "./events";
 
 export type BlockedViewer = { role?: string; ip?: string; discordId?: string | null };
 
@@ -61,6 +62,7 @@ function blockViewer(path: string, viewer: BlockedViewer, reason: AccessBlockRow
     denial_count: count,
     blocked_until: Date.now() + BLOCK_TIMEOUTS_MS[count - 1],
   });
+  notifyChanged(path);
 }
 
 export function kickViewer(path: string, viewer: BlockedViewer): void {
@@ -73,9 +75,12 @@ export function denyViewer(path: string, viewer: BlockedViewer): void {
 
 export function clearBlock(path: string, viewer: BlockedViewer): void {
   const subject = subjectOf(viewer);
-  if (subject) deleteAccessBlock(path, subject);
+  if (!subject) return;
+  deleteAccessBlock(path, subject);
+  notifyChanged(path);
 }
 
 export function clearDenials(path: string): void {
   deleteAccessBlocks(path, "denied");
+  notifyChanged(path);
 }

@@ -1,4 +1,5 @@
 import { syncStreamState } from '@/lib/streamState'
+import { notifyChanged } from '@/lib/events'
 import { syncDiscordWebhookMessage } from '@/lib/discordWebhook'
 import { timingSafeEqual } from 'crypto'
 import { NextRequest } from 'next/server'
@@ -29,6 +30,8 @@ export async function POST(req: NextRequest) {
       } else if (action === 'notReady' || action === 'offline') {
         syncStreamState(path, { ready: false })
         await syncDiscordWebhookMessage(path, false)
+      } else if (action === 'read' || action === 'unread') {
+        notifyChanged(path)
       }
     }
     return new Response(JSON.stringify({ ok: true }), {

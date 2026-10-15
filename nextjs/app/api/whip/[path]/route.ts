@@ -1,6 +1,4 @@
 import { isStreamerAuthorized } from '@/lib/authz'
-import { clearApprovedViewers } from '@/lib/accessRequests'
-import { createStreamSession, deleteStreamSession } from '@/lib/db'
 import { forwardSdpHeaders, mediamtxWebrtcBase } from '@/lib/mediamtx'
 import { NextRequest } from 'next/server'
 
@@ -26,12 +24,7 @@ export async function POST(
   const { path } = await params
   const upstream = `${mediamtxWebrtcBase()}/${path}/whip`
 
-  createStreamSession(path)
-
-  // A fresh stream is a new "session" for access purposes - previously
-  // approved viewers (public or private) must request/be granted access
-  // again, regardless of the path's current visibility.
-  clearApprovedViewers(path)
+  // The stream session starts with MediaMTX's online hook.
 
   const body = await req.text()
   const res = await fetch(upstream, {
@@ -67,10 +60,6 @@ export async function DELETE(
   }
 
   const upstream = `${mediamtxWebrtcBase()}/${path}/whip/${resourceId}`
-
-  deleteStreamSession(path)
-
-  clearApprovedViewers(path)
 
   try {
     const res = await fetch(upstream, {

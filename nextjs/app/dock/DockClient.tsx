@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import Avatar from '@mui/material/Avatar'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -25,31 +25,10 @@ import {
 } from 'lucide-react'
 import AccentPicker from '@/app/components/AccentPicker'
 import AvatarPreview from '@/app/components/AvatarPreview'
+import type { PendingRequest } from '@/lib/accessRequests'
+import type { DockSnapshot, DockViewer } from '@/lib/dockSnapshot'
 import { accentAlpha } from '@/lib/theme'
-import { useMediamtxPaths } from '../hooks/useMediamtxPaths'
-import { usePolling } from '../hooks/usePolling'
-
-type WebrtcSession = {
-  id: string
-  state?: string
-  path?: string
-  created?: string
-  bytesSent?: number
-  remoteAddr?: string
-  viewerName?: string | null
-  viewerImage?: string | null
-  viewerRole?: string | null
-  viewerIp?: string | null
-  viewerHasPony?: boolean
-  viewerDiscordName?: string | null
-  viewerDiscordImage?: string | null
-}
-
-type MtxPath = {
-  name: string
-  ready: boolean
-  readers?: unknown[]
-}
+import { useEventStream } from '../hooks/useEventStream'
 
 type StreamEvent = {
   type: 'join' | 'leave'
@@ -59,15 +38,6 @@ type StreamEvent = {
 }
 
 type Visibility = 'public' | 'private'
-
-type PendingRequest = {
-  ip: string
-  path: string
-  name: string | null
-  image: string | null
-  role?: string
-  requestedAt: number
-}
 
 const MAX_EVENTS = 20
 
@@ -81,22 +51,11 @@ const STATUS_LABELS: Record<HudStatus, string> = {
 }
 
 function requestKeyOf(req: PendingRequest) {
-  return `${req.path}:${req.ip}:${req.role ?? 'guest'}`
+  return `${req.path}:${req.ip}:${req.role}`
 }
 
-async function readItems<T>(result: PromiseSettledResult<Response>): Promise<{
-  items: T[]
-  authError: boolean
-  apiError: boolean
-}> {
-  if (result.status === 'fulfilled' && result.value.ok) {
-    const data = await result.value.json()
-    return { items: data.items || [], authError: false, apiError: false }
-  }
-  const authError =
-    result.status === 'fulfilled' &&
-    (result.value.status === 401 || result.value.status === 403)
-  return { items: [], authError, apiError: !authError }
+function viewerLabel(viewer: DockViewer) {
+  return viewer.name || viewer.ip || 'Guest'
 }
 
 function formatBytes(bytes?: number) {
@@ -107,10 +66,9 @@ function formatBytes(bytes?: number) {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
 }
 
-function formatDuration(startTime?: string) {
+function formatDuration(startTime: string | null, now: number) {
   if (!startTime) return '0s'
   const start = new Date(startTime).getTime()
-  const now = Date.now()
   const diffSec = Math.max(0, Math.floor((now - start) / 1000))
   if (diffSec < 60) return `${diffSec}s`
   const mins = Math.floor(diffSec / 60)
@@ -122,31 +80,20 @@ function formatDuration(startTime?: string) {
 
 export default function DockClient({ embedded = false }: { embedded?: boolean }) {
   const [soundEnabled, setSoundEnabled] = useState(true)
-  const [status, setStatus] = useState<HudStatus>('checking')
-  const [viewerCount, setViewerCount] = useState(0)
-  const [readers, setReaders] = useState<WebrtcSession[]>([])
+  const [snapshot, setSnapshot] = useState<DockSnapshot | null>(null)
   const [events, setEvents] = useState<StreamEvent[]>([])
-  const [viewerPassword, setViewerPassword] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
-  const availablePaths = useMediamtxPaths(10000)
-  const [visibilities, setVisibilities] = useState<Record<string, Visibility>>(
-    {},
-  )
-  const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([])
-  const [busyPath, setBusyPath] = useState<string | null>(null)
-  const [busyRequestKey, setBusyRequestKey] = useState<string | null>(null)
-  const [currentPath, setCurrentPath] = useState<string>('')
-  const [kickingSessionId, setKickingSessionId] = useState<string | null>(null)
-  const [rerollingSessionId, setRerollingSessionId] = useState<string | null>(
-    null,
-  )
+  const [now, setNow] = useState(() => Date.now())
+  // A double-clicked deny would escalate the block.
+  const [busy, setBusy] = useState<string | null>(null)
 
   const soundEnabledRef = useRef(soundEnabled)
   soundEnabledRef.current = soundEnabled
-  const knownSessions = useRef<Map<string, string>>(new Map())
-  const initialLoad = useRef(true)
+  const knownViewers = useRef<Map<string, string> | null>(null)
+  // Logged as kicked, so not again as disconnected.
+  const kickedViewers = useRef(new Set<string>())
   const audioCtxRef = useRef<AudioContext | null>(null)
-  const prevStatusRef = useRef<HudStatus>('checking')
+  const wasLiveRef = useRef<boolean | null>(null)
 
   function withAudio(play: (ctx: AudioContext, now: number) => void) {
     if (!soundEnabledRef.current) return
@@ -219,186 +166,95 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
     )
   }
 
-  usePolling(
-    async (isCancelled) => {
-      try {
-        const results = await Promise.allSettled([
-          fetch('/api/dock/viewers'),
-          fetch('/api/mediamtx/paths/list'),
-        ])
-        const [sessionsResult, pathsResult] = await Promise.all([
-          readItems<WebrtcSession>(results[0]),
-          readItems<MtxPath>(results[1]),
-        ])
-        const sessions = sessionsResult.items
-        const paths = pathsResult.items
-        const hasAuthError = sessionsResult.authError || pathsResult.authError
-        const hasApiError = sessionsResult.apiError || pathsResult.apiError
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(interval)
+  }, [])
 
-        if (isCancelled()) return
+  function announceChanges(next: DockSnapshot) {
+    // A failed MediaMTX request isn't the stream ending or everyone leaving.
+    if (!next.mediamtxReachable) return
 
-        const currentReaders = sessions.filter(
-          (s) => s.state !== undefined && s.state !== 'publish',
-        )
-        const activePublishers = paths.filter((p) => p.ready)
+    const isLive = next.livePaths.length > 0
+    if (wasLiveRef.current !== null && isLive !== wasLiveRef.current) {
+      playStreamTone(isLive)
+    }
+    wasLiveRef.current = isLive
 
-        let newStatus: HudStatus
-        if (hasAuthError) {
-          newStatus = 'error'
-        } else if (hasApiError && paths.length === 0 && sessions.length === 0) {
-          newStatus = 'error'
-        } else if (activePublishers.length > 0) {
-          newStatus = 'live'
-        } else {
-          newStatus = 'offline'
-        }
-
-        if (!initialLoad.current) {
-          if (newStatus === 'live' && prevStatusRef.current !== 'live') {
-            playStreamTone(true)
-          } else if (
-            newStatus !== 'live' &&
-            prevStatusRef.current === 'live'
-          ) {
-            playStreamTone(false)
-          }
-        }
-        prevStatusRef.current = newStatus
-        setStatus(newStatus)
-
-        setCurrentPath(activePublishers[0]?.name ?? '')
-
-        const totalPathReaders = paths.reduce(
-          (acc, p) => acc + (p.readers ? p.readers.length : 0),
-          0,
-        )
-        setViewerCount(Math.max(currentReaders.length, totalPathReaders))
-
-        const currentSessions = new Map(
-          currentReaders.map((r) => [r.id, r.viewerName || 'Guest']),
-        )
-
-        if (!initialLoad.current && !hasAuthError) {
-          for (const reader of currentReaders) {
-            if (!knownSessions.current.has(reader.id)) {
-              const viewer = reader.viewerName || 'Guest'
-              logEvent('join', `joined /${reader.path || 'stream'}`, viewer)
-              playChime(true)
-            }
-          }
-          for (const [oldId, oldViewer] of knownSessions.current) {
-            if (!currentSessions.has(oldId)) {
-              logEvent('leave', 'disconnected', oldViewer)
-              playChime(false)
-            }
-          }
-        }
-        knownSessions.current = currentSessions
-        initialLoad.current = false
-
-        setReaders(currentReaders)
-      } catch (err) {
-        console.error('Error updating streamer HUD:', err)
-        setStatus('error')
-      }
-    },
-    1000,
-    [],
-  )
-
-  usePolling(
-    async (isCancelled) => {
-      if (!currentPath) {
-        setViewerPassword(null)
-        return
-      }
-      try {
-        const res = await fetch(
-          `/api/dock/password?path=${encodeURIComponent(currentPath)}`,
-        )
-        if (!res.ok) return
-        const data = await res.json()
-        if (!isCancelled()) setViewerPassword(data.password ?? null)
-      } catch (err) {
-        console.error('Error fetching viewer password:', err)
-      }
-    },
-    5000,
-    [currentPath],
-  )
-
-  usePolling(
-    async (isCancelled) => {
-      try {
-        const res = await fetch('/api/streams/visibility')
-        if (!res.ok) return
-        const data = await res.json()
-        if (!isCancelled()) setVisibilities(data ?? {})
-      } catch (err) {
-        console.error('Failed to load stream visibility settings:', err)
-      }
-    },
-    5000,
-    [],
-  )
-
-  usePolling(
-    async (isCancelled) => {
-      try {
-        const res = await fetch('/api/streams/pending')
-        if (!res.ok) return
-        const data = await res.json()
-        if (!isCancelled()) setPendingRequests(data.items ?? [])
-      } catch (err) {
-        console.error('Failed to load pending join requests:', err)
-      }
-    },
-    2000,
-    [],
-  )
-
-  async function toggleVisibility(path: string) {
-    const next: Visibility =
-      visibilities[path] === 'private' ? 'public' : 'private'
-    setBusyPath(path)
-    try {
-      const res = await fetch('/api/streams/visibility', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, visibility: next }),
-      })
-      if (res.ok) {
-        setVisibilities((prev) => ({ ...prev, [path]: next }))
-      }
-    } catch (err) {
-      console.error('Failed to update stream visibility:', err)
-    } finally {
-      setBusyPath(null)
+    const known = knownViewers.current
+    const current = new Map(next.viewers.map((v) => [v.id, viewerLabel(v)]))
+    knownViewers.current = current
+    if (!known) return
+    for (const viewer of next.viewers) {
+      if (known.has(viewer.id)) continue
+      logEvent('join', `joined /${viewer.path || 'stream'}`, viewerLabel(viewer))
+      playChime(true)
+    }
+    for (const [id, name] of known) {
+      if (current.has(id) || kickedViewers.current.delete(id)) continue
+      logEvent('leave', 'disconnected', name)
+      playChime(false)
     }
   }
 
-  async function respondToRequest(
-    req: PendingRequest,
-    action: 'approve' | 'deny',
-  ) {
-    const requestKey = requestKeyOf(req)
-    setBusyRequestKey(requestKey)
+  const { connected } = useEventStream<{ type: 'snapshot'; snapshot: DockSnapshot }>(
+    '/api/dock/events',
+    (event) => {
+      if (event.type !== 'snapshot') return
+      announceChanges(event.snapshot)
+      setSnapshot(event.snapshot)
+      setNow(Date.now())
+    },
+  )
+
+  const visibilities = snapshot?.visibility ?? {}
+  const pendingRequests = snapshot?.pending ?? []
+  const readers = snapshot?.viewers ?? []
+  const availablePaths = snapshot?.paths ?? []
+  const currentPath = snapshot?.currentPath ?? ''
+  const viewerPassword = snapshot?.viewerPassword ?? null
+  const viewerCount = snapshot?.viewerCount ?? 0
+
+  let status: HudStatus = 'checking'
+  if (snapshot) {
+    if (!connected || !snapshot.mediamtxReachable) status = 'error'
+    else status = snapshot.livePaths.length > 0 ? 'live' : 'offline'
+  }
+
+  async function run(key: string, request: () => Promise<Response>) {
+    setBusy(key)
     try {
-      const res = await fetch(`/api/streams/pending/${action}`, {
+      const res = await request()
+      if (!res.ok) console.error(`Dock action failed: HTTP ${res.status}`)
+      return res.ok
+    } catch (err) {
+      console.error('Dock action failed:', err)
+      return false
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  function toggleVisibility(path: string) {
+    const visibility: Visibility =
+      visibilities[path] === 'private' ? 'public' : 'private'
+    return run(`visibility:${path}`, () =>
+      fetch('/api/streams/visibility', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, visibility }),
+      }),
+    )
+  }
+
+  function respondToRequest(req: PendingRequest, action: 'approve' | 'deny') {
+    return run(`request:${requestKeyOf(req)}`, () =>
+      fetch(`/api/streams/pending/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: req.path, ip: req.ip, role: req.role }),
-      })
-      if (res.ok) {
-        setPendingRequests((prev) =>
-          prev.filter((r) => requestKeyOf(r) !== requestKey),
-        )
-      }
-    } catch (err) {
-      console.error(`Failed to ${action} join request:`, err)
-    } finally {
-      setBusyRequestKey(null)
-    }
+      }),
+    )
   }
 
   async function copyPassword() {
@@ -412,61 +268,32 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
     }
   }
 
-  async function rotatePassword() {
+  function rotatePassword() {
     if (!currentPath) return
-    try {
-      const res = await fetch(
-        `/api/dock/password?path=${encodeURIComponent(currentPath)}`,
-        { method: 'POST' },
-      )
-      if (!res.ok) return
-      const data = await res.json()
-      setViewerPassword(data.password)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch (err) {
-      console.error('Failed to rotate password:', err)
-    }
+    return run('password', () =>
+      fetch(`/api/dock/password?path=${encodeURIComponent(currentPath)}`, {
+        method: 'POST',
+      }),
+    )
   }
 
-  async function kickViewer(sessionId: string, viewerName: string) {
-    setKickingSessionId(sessionId)
-    try {
-      const res = await fetch(
-        `/api/dock/viewers?id=${encodeURIComponent(sessionId)}`,
-        {
-          method: 'DELETE',
-        },
-      )
-      if (res.ok) {
-        logEvent('leave', 'kicked by streamer', viewerName)
-        setReaders((prev) => prev.filter((r) => r.id !== sessionId))
-      }
-    } catch (err) {
-      console.error('Failed to kick viewer:', err)
-    } finally {
-      setKickingSessionId(null)
-    }
+  async function kickViewer(viewer: DockViewer) {
+    kickedViewers.current.add(viewer.id)
+    const kicked = await run(`kick:${viewer.id}`, () =>
+      fetch(`/api/dock/viewers?id=${encodeURIComponent(viewer.id)}`, {
+        method: 'DELETE',
+      }),
+    )
+    if (kicked) logEvent('leave', 'kicked by streamer', viewerLabel(viewer))
+    else kickedViewers.current.delete(viewer.id)
   }
 
-  async function rerollAvatar(sessionId: string) {
-    setRerollingSessionId(sessionId)
-    try {
-      const res = await fetch(
-        `/api/dock/viewers/avatar?id=${encodeURIComponent(sessionId)}`,
-        { method: 'POST' },
-      )
-      if (res.ok) {
-        const { image } = await res.json()
-        setReaders((prev) =>
-          prev.map((r) => (r.id === sessionId ? { ...r, viewerImage: image } : r)),
-        )
-      }
-    } catch (err) {
-      console.error('Failed to reroll avatar:', err)
-    } finally {
-      setRerollingSessionId(null)
-    }
+  function rerollAvatar(sessionId: string) {
+    return run(`reroll:${sessionId}`, () =>
+      fetch(`/api/dock/viewers/avatar?id=${encodeURIComponent(sessionId)}`, {
+        method: 'POST',
+      }),
+    )
   }
 
   const statusLabel = STATUS_LABELS[status]
@@ -543,7 +370,7 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
           <IconButton
             size="small"
             onClick={rotatePassword}
-            disabled={!currentPath}
+            disabled={!currentPath || busy === 'password'}
             title="Rotate viewer password for the currently streaming path"
             sx={smallButtonSx}
           >
@@ -587,7 +414,7 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
                   size="small"
                   clickable
                   onClick={() => toggleVisibility(p)}
-                  disabled={busyPath === p}
+                  disabled={busy === `visibility:${p}`}
                   title="Toggle between public (anyone can join) and private (streamer approves each viewer)"
                   icon={isPrivate ? <Lock size={12} /> : <Globe size={12} />}
                   label={isPrivate ? 'Private' : 'Public'}
@@ -632,7 +459,7 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
                   <Button
                     size="small"
                     onClick={() => respondToRequest(req, 'approve')}
-                    disabled={busyRequestKey === requestKey}
+                    disabled={busy === `request:${requestKey}`}
                     sx={tintedButtonSx('success')}
                   >
                     Approve
@@ -640,7 +467,7 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
                   <Button
                     size="small"
                     onClick={() => respondToRequest(req, 'deny')}
-                    disabled={busyRequestKey === requestKey}
+                    disabled={busy === `request:${requestKey}`}
                     sx={tintedButtonSx('error')}
                   >
                     Deny
@@ -656,7 +483,7 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
         title="Current Viewers"
         extra={
           <Box component="span" sx={{ fontSize: 10, opacity: 0.7, textTransform: 'none' }}>
-            polling
+            live
           </Box>
         }
       />
@@ -667,41 +494,41 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
           readers.map((r) => (
             <Row key={r.id}>
               <Stack direction="row" spacing={1} sx={{ alignItems: 'center', minWidth: 0 }}>
-                {r.viewerImage ? (
+                {r.image ? (
                   <AvatarPreview
-                    image={r.viewerImage}
-                    name={r.viewerName || r.viewerIp || 'Guest'}
+                    image={r.image}
+                    name={viewerLabel(r)}
                     sx={{ display: 'flex', flexShrink: 0, cursor: 'zoom-in' }}
                   >
-                    <SmallAvatar image={r.viewerImage} fallback="G" />
+                    <SmallAvatar image={r.image} fallback="G" />
                   </AvatarPreview>
                 ) : (
-                  <SmallAvatar image={null} fallback={r.viewerName || 'G'} />
+                  <SmallAvatar image={null} fallback={r.name || 'G'} />
                 )}
                 <Box sx={{ minWidth: 0 }}>
                   <Typography noWrap sx={{ fontSize: 12, fontWeight: 600, color: 'primary.light' }}>
-                    {r.viewerName || r.viewerIp || 'Guest'}
+                    {viewerLabel(r)}
                   </Typography>
-                  {r.viewerDiscordName && (
+                  {r.discordName && (
                     <Stack
                       direction="row"
                       spacing={0.5}
                       sx={{ alignItems: 'center', fontSize: 10, color: 'discord.light' }}
                     >
-                      {r.viewerDiscordImage && (
+                      {r.discordImage && (
                         <Avatar
-                          src={r.viewerDiscordImage}
+                          src={r.discordImage}
                           alt=""
                           slotProps={{ img: { referrerPolicy: 'no-referrer' } }}
                           sx={{ width: 12, height: 12 }}
                         />
                       )}
-                      <span>Discord: {r.viewerDiscordName}</span>
+                      <span>Discord: {r.discordName}</span>
                     </Stack>
                   )}
                   <Typography sx={{ fontSize: 10, color: 'text.secondary' }}>
-                    {(r.viewerRole !== 'discord' || r.viewerHasPony) &&
-                      r.viewerIp && <>{r.viewerIp} · </>}
+                    {(r.role !== 'discord' || r.hasPony) &&
+                      r.ip && <>{r.ip} · </>}
                     Path: <strong>{r.path || 'default'}</strong>
                   </Typography>
                 </Box>
@@ -712,21 +539,21 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
                   sx={{ alignItems: 'flex-end', fontSize: 11, color: 'text.secondary' }}
                 >
                   <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
-                    <Clock size={12} /> <span>{formatDuration(r.created)}</span>
+                    <Clock size={12} /> <span>{formatDuration(r.created, now)}</span>
                   </Stack>
                   <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
                     <HardDrive size={12} /> <span>{formatBytes(r.bytesSent)}</span>
                   </Stack>
                 </Stack>
-                {r.viewerHasPony && (
+                {r.hasPony && (
                   <IconButton
                     size="small"
                     onClick={() => rerollAvatar(r.id)}
-                    disabled={rerollingSessionId === r.id}
+                    disabled={busy === `reroll:${r.id}`}
                     title="Give this viewer a different pony picture"
                     sx={tintedButtonSx('info')}
                   >
-                    {rerollingSessionId === r.id ? (
+                    {busy === `reroll:${r.id}` ? (
                       <CircularProgress size={12} color="inherit" />
                     ) : (
                       <Dices size={12} />
@@ -735,18 +562,12 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
                 )}
                 <IconButton
                   size="small"
-                  onClick={() =>
-                    kickViewer(r.id, r.viewerName || r.viewerIp || 'Guest')
-                  }
-                  disabled={kickingSessionId === r.id}
+                  onClick={() => kickViewer(r)}
+                  disabled={busy === `kick:${r.id}`}
                   title="Kick this viewer"
                   sx={tintedButtonSx('error')}
                 >
-                  {kickingSessionId === r.id ? (
-                    <CircularProgress size={12} color="inherit" />
-                  ) : (
-                    <X size={12} />
-                  )}
+                  <X size={12} />
                 </IconButton>
               </Stack>
             </Row>

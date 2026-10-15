@@ -2,6 +2,7 @@ import { isStreamerAuthorized } from '@/lib/authz'
 import { getViewerIdentity } from '@/lib/viewerIdentities'
 import { ponyKeyForSession, rerollGuestAvatar } from '@/lib/guestIdentity'
 import { refreshWatchGuest } from '@/lib/watchRoom'
+import { notifyChanged } from '@/lib/events'
 import { NextRequest } from 'next/server'
 
 export async function POST(req: NextRequest) {
@@ -21,5 +22,6 @@ export async function POST(req: NextRequest) {
 
   const pony = await rerollGuestAvatar(guest.path, guest.ponyKey)
   await refreshWatchGuest(guest.path, guest.ponyKey)
+  notifyChanged(guest.path)
   return Response.json({ image: pony.image })
 }

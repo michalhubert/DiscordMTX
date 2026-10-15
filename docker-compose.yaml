@@ -16,6 +16,8 @@ services:
       HOOK_ONLINE: ${HOOK_ONLINE:-/hooks/stream-online.sh}
       HOOK_ONLINE_RESTART: ${HOOK_ONLINE_RESTART:-false}
       HOOK_OFFLINE: ${HOOK_OFFLINE:-/hooks/stream-offline.sh}
+      # Runs when a viewer starts/stops watching; empty turns it off
+      HOOK_VIEWER: ${HOOK_VIEWER-/hooks/stream-viewer.sh}
       # Where the hooks reach Next.js; change if you rename the nextjs service or run it elsewhere
       NEXTJS_URL: ${NEXTJS_URL:-http://nextjs:3000}
       # Sent by the hooks to Next.js; must match the nextjs service

@@ -12,7 +12,6 @@ export type WatchClient = {
   role: string;
   ponyKey: string | null;
   send: (event: WatchEvent) => void;
-  close: () => void;
 };
 
 type Room = Map<string, WatchClient>; // connectionId -> client
@@ -21,6 +20,7 @@ type Room = Map<string, WatchClient>; // connectionId -> client
 const store = globalThis as typeof globalThis & {
   __watchRooms?: Map<string, Room>;
   __watchReactionLog?: Map<string, number[]>;
+  __watchConnections?: Map<string, { path: string; close: () => void }>;
 };
 const rooms = (store.__watchRooms ??= new Map<string, Room>());
 const reactionLog = (store.__watchReactionLog ??= new Map<string, number[]>());
@@ -117,26 +117,19 @@ export async function refreshWatchGuest(path: string, ponyKey: string): Promise<
   if (changed) broadcastPresence(path);
 }
 
+// Every open viewer channel, for /api/watch/[path]/leave.
+const connections = (store.__watchConnections ??= new Map<string, { path: string; close: () => void }>());
+
+export function registerWatchConnection(path: string, connectionId: string, close: () => void): () => void {
+  connections.set(connectionId, { path, close });
+  return () => {
+    connections.delete(connectionId);
+  };
+}
+
 export function closeWatchConnection(path: string, connectionId: string): void {
-  rooms.get(path)?.get(connectionId)?.close();
-}
-
-export function disconnectWatchViewer(path: string, ip: string, role?: string): void {
-  const room = rooms.get(path);
-  if (!room) return;
-  for (const client of Array.from(room.values())) {
-    if (client.ip === ip && client.role === role) client.close();
-  }
-}
-
-export function disconnectAllWatchViewers(path: string): void {
-  const room = rooms.get(path);
-  if (!room) return;
-  for (const client of Array.from(room.values())) {
-    if (client.role !== "streamer") {
-      client.close();
-    }
-  }
+  const connection = connections.get(connectionId);
+  if (connection?.path === path) connection.close();
 }
 
 export function allowReaction(viewerId: string): boolean {

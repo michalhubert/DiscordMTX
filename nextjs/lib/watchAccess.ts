@@ -7,15 +7,28 @@ import { getBlock, blockedViewerOf } from "./accessBlocks";
 import { isViewerPasswordStale, type SessionUser } from "./authz";
 import { ponyKeyFor } from "./guestIdentity";
 
-// Same rules as the WHEP endpoint. Synchronous so it can run on every heartbeat.
-export function watchAccessDenied(user: SessionUser, path: string, ip: string): number | null {
-  if (isViewerPasswordStale(user, path)) return 401;
-  if (user.role === "streamer") return null;
-  if (getBlock(path, blockedViewerOf(user, ip))) return 403;
+export type ViewerAccess =
+  | { status: "ok" }
+  | { status: "pending" }
+  | { status: "blocked"; reason: "kicked" | "denied"; blockedUntil: number }
+  // The viewer password changed since sign-in.
+  | { status: "unauthorized" };
+
+export function viewerAccess(user: SessionUser, path: string, ip: string): ViewerAccess {
+  if (isViewerPasswordStale(user, path)) return { status: "unauthorized" };
+  if (user.role === "streamer") return { status: "ok" };
+  const block = getBlock(path, blockedViewerOf(user, ip));
+  if (block) return { status: "blocked", ...block };
   if (getPathVisibility(path) === "private" && !isApproved(path, ip, user.role)) {
-    return 403;
+    return { status: "pending" };
   }
-  return null;
+  return { status: "ok" };
+}
+
+export function watchAccessDenied(user: SessionUser, path: string, ip: string): number | null {
+  const { status } = viewerAccess(user, path, ip);
+  if (status === "unauthorized") return 401;
+  return status === "ok" ? null : 403;
 }
 
 export async function authorizeWatch(

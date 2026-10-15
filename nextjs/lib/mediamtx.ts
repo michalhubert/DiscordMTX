@@ -23,11 +23,14 @@ export function forwardSdpHeaders(res: Response): Headers {
   return headers;
 }
 
+const API_TIMEOUT_MS = 3000;
+
 async function listItems<T>(endpoint: string): Promise<T[] | null> {
   try {
     const res = await fetch(`${mediamtxApiBase()}/v3/${endpoint}`, {
       headers: { Accept: "application/json" },
       cache: "no-store",
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -37,14 +40,30 @@ async function listItems<T>(endpoint: string): Promise<T[] | null> {
   }
 }
 
-export type PathItem = { name: string; ready?: boolean; readyTime?: string; [key: string]: unknown };
+export function listConfiguredPaths(): Promise<{ name: string }[] | null> {
+  return listItems<{ name: string }>("config/paths/list");
+}
+
+export type PathItem = {
+  name: string;
+  ready?: boolean;
+  readyTime?: string;
+  readers?: unknown[];
+  [key: string]: unknown;
+};
 
 // null = MediaMTX unreachable or errored.
 export function listPaths(): Promise<PathItem[] | null> {
   return listItems<PathItem>("paths/list");
 }
 
-export type WebrtcSessionItem = { id: string; path?: string; [key: string]: unknown };
+export type WebrtcSessionItem = {
+  id: string;
+  path?: string;
+  state?: string;
+  user?: string;
+  [key: string]: unknown;
+};
 
 // null = MediaMTX unreachable or errored.
 export function fetchWebrtcSessions(): Promise<WebrtcSessionItem[] | null> {
@@ -65,6 +84,7 @@ export async function kickWebrtcSession(id: string): Promise<boolean> {
     // DELETE /v3/webrtcsessions/{id} (which doesn't exist and returns 404).
     const res = await fetch(`${mediamtxApiBase()}/v3/webrtcsessions/kick/${encodeURIComponent(id)}`, {
       method: "POST",
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
     });
     return res.ok;
   } catch {
