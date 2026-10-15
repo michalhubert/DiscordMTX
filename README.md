@@ -49,14 +49,17 @@ Create a `.env` file:
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 PLAYER_DOMAIN=stream.example.com
 
-# Also gates access to the /dock OBS HUD
-STREAMER_PASSWORD=change-me
+# Required. Also gates access to the /dock OBS HUD; use a long, random one
+STREAMER_PASSWORD=
 
 WEBRTC_ADDITIONAL_HOSTS=192.168.1.100,203.0.113.10
 
 NEXTJS_PORT=8080
-NEXTAUTH_SECRET=change-me-to-a-random-secret
+# Required; generate one with: openssl rand -hex 32
+NEXTAUTH_SECRET=
 NEXTAUTH_URL=https://stream.example.com
+# Header your reverse proxy puts the client's IP in, see "Client IPs" below
+#CLIENT_IP_HEADER=x-forwarded-for
 # Optional, defaults to NEXTAUTH_SECRET
 #HOOK_SECRET=another-random-secret
 
@@ -99,7 +102,7 @@ docker compose down
 | `DISCORD_WEBHOOK_URL`     | Default Discord webhook used for stream online/offline notifications |
 | `DISCORD_WEBHOOK_URLS`    | Optional per-path webhook overrides (see below)    |
 | `PLAYER_DOMAIN`           | Domain used for the generated player URL           |
-| `STREAMER_PASSWORD`       | Password for the MediaMTX `streamer` user, and for the `/dock` OBS HUD |
+| `STREAMER_PASSWORD`       | Required. Password for the MediaMTX `streamer` user (OBS, and Next.js itself), and for the `/dock` OBS HUD |
 | `WEBRTC_TRUSTED_PROXIES`  | MediaMTX `webrtcTrustedProxies`, see [Trusted proxies](#trusted-proxies) |
 | `API_TRUSTED_PROXIES`     | MediaMTX `apiTrustedProxies`, see [Trusted proxies](#trusted-proxies) |
 | `WEBRTC_ADDITIONAL_HOSTS` | Addresses advertised to the WebRTC player          |
@@ -111,13 +114,14 @@ docker compose down
 | `MEDIAMTX_HOST`           | Hostname/IP of the discordmtx service the Next.js WHEP/API proxy talks to |
 | `MEDIAMTX_PORT`           | Port of the discordmtx service the Next.js WHEP proxy talks to (default `8889`) |
 | `MEDIAMTX_API_PORT`       | Port of the discordmtx MediaMTX control API used by `/dock` (default `9997`) |
-| `NEXTAUTH_SECRET`         | Random secret used to sign Next.js session cookies |
+| `NEXTAUTH_SECRET`         | Required. Random secret used to sign Next.js session cookies; anyone who knows it can sign in as the streamer |
 | `HOOK_SECRET`             | Shared secret MediaMTX's stream hooks send to `/api/streams/hook` (defaults to `NEXTAUTH_SECRET`; set the same value on both services) |
 | `NEXTAUTH_URL`            | Public URL of the Next.js frontend                 |
 | `DISCORD_CLIENT_ID`       | Discord OAuth application client ID                |
 | `DISCORD_CLIENT_SECRET`   | Discord OAuth application client secret            |
 | `NEXT_PUBLIC_DISCORD_ENABLED` | Set to `true` to show the "Sign in with Discord" button on the login page |
-| `DISABLE_DOCK_AUTH`       | Set to `true` to skip authentication on `/dock` and `/stream` (useful when the frontend is only reachable from a trusted/local network) |
+| `DISABLE_DOCK_AUTH`       | Set to `true` to skip authentication on `/dock` and `/stream`. **Everyone who can reach the app then has full streamer control**, so only use it when the app isn't reachable from the internet |
+| `CLIENT_IP_HEADER`        | Header the reverse proxy puts the client's IP in (default `x-forwarded-for`), see [Client IPs](#client-ips) |
 | `DENIAL_TIMEOUTS`         | Comma-separated minutes a kicked or denied viewer is kept out, growing with each repeat kick or denial within an hour; the last value repeats (default `1,5,15`) |
 | `GUEST_AVATAR_FILTER_ID`  | Derpibooru filter used for guest avatars (optional, defaults to Derpibooru's default filter), see below |
 | `GUEST_AVATAR_TAGS`       | Extra Derpibooru tags every guest avatar must have (optional), see below |
@@ -198,7 +202,7 @@ The web interface/player itself can still be served through the normal Cloudflar
 
 `WEBRTC_TRUSTED_PROXIES` and `API_TRUSTED_PROXIES` are MediaMTX's own settings, not the Next.js app's. They list the addresses MediaMTX lets set `X-Forwarded-For` on its WebRTC (`8889`) and control API (`9997`) ports. MediaMTX only uses that header to work out the client's IP for its logs and for IP-restricted users, and this stack has no IP-restricted users.
 
-Next.js doesn't send `X-Forwarded-For` to MediaMTX, so these settings don't change how the app behaves. Next.js works out viewer IPs itself, from `CF-Connecting-IP`, `X-Forwarded-For` or `X-Real-IP`, set by the reverse proxy in front of it.
+Next.js doesn't send `X-Forwarded-For` to MediaMTX, so these settings don't change how the app behaves. Next.js works out viewer IPs itself, see [Client IPs](#client-ips).
 
 The default, `0.0.0.0/0,::/0`, trusts everyone. That's harmless for the API, which isn't published outside the Docker network. Port `8889` is published for OBS, though, so anyone reaching it can fake their IP in MediaMTX's logs. Since nothing in the stack needs to set the header, the safest value is localhost only:
 
@@ -208,6 +212,15 @@ API_TRUSTED_PROXIES=127.0.0.1/32
 ```
 
 Don't use the Docker network's subnet instead: Docker's port proxy can make outside traffic look like it comes from the network's gateway, which is inside that subnet.
+
+### Client IPs
+
+Guests (viewer password) can only be told apart by IP, so approvals, kicks and denials for them depend on Next.js knowing each viewer's real IP. It takes it from the header named by `CLIENT_IP_HEADER`, which your reverse proxy must set:
+
+* `x-forwarded-for` (default): the **last** entry is used, the one added by the proxy right in front of Next.js. Works with a single proxy such as NGINX, Caddy, Traefik, Cloudflare or a Cloudflare Tunnel.
+* With several proxies, e.g. Cloudflare in front of NGINX, the last entry is the outer proxy's address. Use a header the outer proxy sets instead, such as `cf-connecting-ip`, and make sure Next.js is only reachable through it, or clients can send that header themselves.
+
+Without a reverse proxy, clients can pick their own IP, so don't expose Next.js directly.
 
 ## Ports
 
@@ -279,7 +292,7 @@ If no `paths.yml` is mounted, or the mounted file is empty/invalid, `entrypoint.
 
 Because path names are mapped to MediaMTX's `MTX_PATHS_<NAME>_*` environment variables (see [MediaMTX configuration](#mediamtx) below), use single-word, alphanumeric path names (e.g. `desktop`, `gaming`). Names containing `-` or `_` are ambiguous for MediaMTX's environment variable parser and are not supported.
 
-The `streamer` user can only publish (and the `any`/anonymous user can only read) paths that are explicitly listed in `paths.yml` - `entrypoint.sh` grants publish/read permissions and hook overrides per path, one by one. There is no wildcard/"any path" access: a path not declared in `paths.yml` has no permissions at all, so both OBS and the `/stream` browser-capture panel (see [Browser Streaming Panel](#browser-streaming-panel)) can only publish to a path that's already configured there.
+`streamer` is MediaMTX's only user: nothing can be read or published without its password, so viewers can only watch through Next.js, which checks their access. It can only publish to paths that are explicitly listed in `paths.yml` - `entrypoint.sh` grants publish permissions and hook overrides per path, one by one. A path not declared in `paths.yml` can't be published to, so both OBS and the `/stream` browser-capture panel (see [Browser Streaming Panel](#browser-streaming-panel)) can only publish to a path that's already configured there.
 
 MediaMTX configuration:
 

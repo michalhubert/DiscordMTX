@@ -28,10 +28,14 @@ HOOK_VIEWER="${HOOK_VIEWER-/hooks/stream-viewer.sh}"
 export DISCORD_WEBHOOK_URL="${DISCORD_WEBHOOK_URL:-}"
 export DISCORD_WEBHOOK_URLS="${DISCORD_WEBHOOK_URLS:-}"
 
-# The "streamer" password below is used for two things:
-#  - MediaMTX's "streamer" internal user (WHIP publish, from OBS)
+# The "streamer" password is used for:
+#  - MediaMTX's only user, "streamer": OBS publishing, and Next.js (playback
+#    for authorized viewers, API). Nobody else can reach MediaMTX.
 #  - The Next.js /dock (OBS HUD) login, checked directly against this env var
-STREAMER_PASSWORD="${STREAMER_PASSWORD:-discordmtx_streamer_pass}"
+if [ -z "${STREAMER_PASSWORD:-}" ]; then
+  echo "STREAMER_PASSWORD must be set" >&2
+  exit 1
+fi
 
 # MediaMTX natively supports configuration through MTX_<PARAMNAME> environment
 # variables (see https://mediamtx.org/docs/features/configuration), so the
@@ -40,14 +44,10 @@ STREAMER_PASSWORD="${STREAMER_PASSWORD:-discordmtx_streamer_pass}"
 export MTX_AUTHINTERNALUSERS_0_USER="streamer"
 export MTX_AUTHINTERNALUSERS_0_PASS="$STREAMER_PASSWORD"
 
-# Grant streamer API and metrics permissions at index 0 and 1
 mtx_export "MTX_AUTHINTERNALUSERS_0_PERMISSIONS_0_ACTION" "api"
 mtx_export "MTX_AUTHINTERNALUSERS_0_PERMISSIONS_1_ACTION" "metrics"
-
-# Grant anonymous/viewer user API and metrics permissions
-export MTX_AUTHINTERNALUSERS_1_USER="any"
-mtx_export "MTX_AUTHINTERNALUSERS_1_PERMISSIONS_0_ACTION" "api"
-mtx_export "MTX_AUTHINTERNALUSERS_1_PERMISSIONS_1_ACTION" "metrics"
+# Any path; publishing is granted per path below.
+mtx_export "MTX_AUTHINTERNALUSERS_0_PERMISSIONS_2_ACTION" "read"
 
 # Arrays are overridden with a plain comma-separated list, no YAML needed.
 export MTX_WEBRTCTRUSTEDPROXIES="${WEBRTC_TRUSTED_PROXIES:-0.0.0.0/0,::/0}"
@@ -74,12 +74,9 @@ while [ "$i" -lt "$COUNT" ]; do
   # Path names with "-" or "_" are ambiguous for MediaMTX's env var parser and are not supported.
   ENV_NAME=$(echo "$NAME" | tr '[:lower:]' '[:upper:]')
 
-  PERM_INDEX=$((i + 2))
+  PERM_INDEX=$((i + 3))
   mtx_export "MTX_AUTHINTERNALUSERS_0_PERMISSIONS_${PERM_INDEX}_ACTION" "publish"
   mtx_export "MTX_AUTHINTERNALUSERS_0_PERMISSIONS_${PERM_INDEX}_PATH" "$NAME"
-
-  mtx_export "MTX_AUTHINTERNALUSERS_1_PERMISSIONS_${PERM_INDEX}_ACTION" "read"
-  mtx_export "MTX_AUTHINTERNALUSERS_1_PERMISSIONS_${PERM_INDEX}_PATH" "$NAME"
 
   mtx_export "MTX_PATHS_${ENV_NAME}_RUNONONLINE" "$HOOK_ON"
   mtx_export "MTX_PATHS_${ENV_NAME}_RUNONOFFLINE" "$HOOK_OFF"

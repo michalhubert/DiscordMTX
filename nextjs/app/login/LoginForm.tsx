@@ -8,6 +8,7 @@ import Divider from '@mui/material/Divider'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
+import { sameSitePath } from '@/lib/loginUrl'
 import LoginShell from './LoginShell'
 
 export default function LoginForm({
@@ -17,8 +18,10 @@ export default function LoginForm({
 }) {
   const searchParams = useSearchParams()
   const isStreamerMode = searchParams.get('mode') === 'streamer'
-  const callbackUrl =
-    searchParams.get('callbackUrl') ?? (isStreamerMode ? '/dock' : '/')
+  const callbackUrl = sameSitePath(
+    searchParams.get('callbackUrl'),
+    isStreamerMode ? '/dock' : '/',
+  )
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)

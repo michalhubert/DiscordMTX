@@ -1,7 +1,12 @@
 import { listPendingRequests, type PendingRequest } from "./accessRequests";
 import { getAllPathVisibilities, getViewerPassword, type PathVisibility } from "./db";
 import { cachedGuestIdentity, ponyKeyForSession } from "./guestIdentity";
-import { fetchWebrtcSessions, listConfiguredPaths, type WebrtcSessionItem } from "./mediamtx";
+import {
+  fetchWebrtcSessions,
+  listConfiguredPaths,
+  pathNames,
+  type WebrtcSessionItem,
+} from "./mediamtx";
 import { refreshStreamStates } from "./streamState";
 import { getViewerIdentity, pruneViewerIdentities } from "./viewerIdentities";
 
@@ -63,14 +68,13 @@ export async function dockSnapshot(): Promise<DockSnapshot> {
   if (sessions) pruneViewerIdentities(sessions.map((s) => s.id));
   const readers = (sessions ?? []).filter((s) => s.state !== undefined && s.state !== "publish");
   const livePaths = (livePathItems ?? []).filter((p) => p.ready).map((p) => p.name);
-  const paths = new Set([...(configured ?? []), ...(livePathItems ?? [])].map((p) => p.name));
   // Includes non-WebRTC readers (e.g. RTSP).
   const pathReaders = (livePathItems ?? []).reduce((sum, p) => sum + (p.readers?.length ?? 0), 0);
 
   const currentPath = livePaths[0] ?? null;
   return {
     mediamtxReachable: !!(livePathItems && sessions),
-    paths: Array.from(paths).sort(),
+    paths: pathNames(configured, livePathItems),
     livePaths,
     viewerCount: Math.max(readers.length, pathReaders),
     viewers: readers.map(toDockViewer),

@@ -3,6 +3,8 @@ import type { NextAuthConfig } from "next-auth";
 import Discord from "next-auth/providers/discord";
 import Credentials from "next-auth/providers/credentials";
 import { authConfig } from "./auth.config";
+import { safeEqual, throttledLogin } from "./credentials";
+import { getClientIp } from "./net";
 
 export const config: NextAuthConfig = {
   ...authConfig,
@@ -36,10 +38,12 @@ export const config: NextAuthConfig = {
       credentials: {
         password: { label: "Password", type: "password" },
       },
-      async authorize({ password }) {
+      async authorize({ password }, request) {
         const { getAllViewerPasswords } = await import("@/lib/db");
         if (typeof password !== "string" || !password) return null;
-        const match = Object.values(getAllViewerPasswords()).includes(password);
+        const match = throttledLogin(getClientIp(request), () =>
+          Object.values(getAllViewerPasswords()).some((valid) => safeEqual(password, valid))
+        );
         return match ? { id: "viewer", name: "Viewer", role: "viewer", password } : null;
       },
     }),
@@ -51,10 +55,11 @@ export const config: NextAuthConfig = {
       credentials: {
         password: { label: "Password", type: "password" },
       },
-      async authorize({ password }) {
+      async authorize({ password }, request) {
         const streamerPassword = process.env.STREAMER_PASSWORD;
-        if (!streamerPassword || password !== streamerPassword) return null;
-        return { id: "streamer", name: "Streamer", role: "streamer" };
+        if (!streamerPassword || typeof password !== "string") return null;
+        const match = throttledLogin(getClientIp(request), () => safeEqual(password, streamerPassword));
+        return match ? { id: "streamer", name: "Streamer", role: "streamer" } : null;
       },
     }),
   ],

@@ -1,14 +1,11 @@
 import { isStreamerAuthorized } from '@/lib/authz'
-import { forwardSdpHeaders, mediamtxWebrtcBase } from '@/lib/mediamtx'
+import {
+  forwardSdpHeaders,
+  mediamtxAuthHeader,
+  mediamtxWebrtcBase,
+} from '@/lib/mediamtx'
+import { PATH_NAME_RE } from '@/lib/streamSettings'
 import { NextRequest } from 'next/server'
-
-// Publishing is restricted to the "streamer" internal MediaMTX user (see
-// entrypoint.sh), so requests to MediaMTX must carry its credentials,
-// unlike the anonymous/"any" user used for WHEP reads.
-function mediamtxAuthHeader(): string {
-  const password = process.env.STREAMER_PASSWORD ?? ''
-  return 'Basic ' + Buffer.from(`streamer:${password}`).toString('base64')
-}
 
 // WHIP publish: browser posts an SDP offer, MediaMTX answers and starts
 // ingesting the "browser" path. Mirrors /api/whep but for the publisher
@@ -22,6 +19,7 @@ export async function POST(
   }
 
   const { path } = await params
+  if (!PATH_NAME_RE.test(path)) return new Response(null, { status: 404 })
   const upstream = `${mediamtxWebrtcBase()}/${path}/whip`
 
   // The stream session starts with MediaMTX's online hook.
@@ -54,6 +52,7 @@ export async function DELETE(
   }
 
   const { path } = await params
+  if (!PATH_NAME_RE.test(path)) return new Response(null, { status: 404 })
   const resourceId = req.nextUrl.searchParams.get('id')
   if (!resourceId) {
     return new Response('Missing id', { status: 400 })

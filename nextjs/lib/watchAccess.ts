@@ -2,10 +2,11 @@ import { NextRequest } from "next/server";
 import { auth } from "./auth";
 import { getClientIp } from "./net";
 import { getPathVisibility } from "./db";
-import { isApproved } from "./accessRequests";
+import { approvalKey, isApproved } from "./accessRequests";
 import { getBlock, blockedViewerOf } from "./accessBlocks";
 import { isViewerPasswordStale, type SessionUser } from "./authz";
 import { ponyKeyFor } from "./guestIdentity";
+import { PATH_NAME_RE } from "./streamSettings";
 
 export type ViewerAccess =
   | { status: "ok" }
@@ -19,7 +20,8 @@ export function viewerAccess(user: SessionUser, path: string, ip: string): Viewe
   if (user.role === "streamer") return { status: "ok" };
   const block = getBlock(path, blockedViewerOf(user, ip));
   if (block) return { status: "blocked", ...block };
-  if (getPathVisibility(path) === "private" && !isApproved(path, ip, user.role)) {
+  const discordId = user.role === "discord" ? user.id : null;
+  if (getPathVisibility(path) === "private" && !isApproved(path, approvalKey(user.role, ip, discordId), user.role)) {
     return { status: "pending" };
   }
   return { status: "ok" };
@@ -35,6 +37,7 @@ export async function authorizeWatch(
   req: NextRequest,
   path: string
 ): Promise<{ user: SessionUser; ip: string; error?: undefined } | { user?: undefined; error: number }> {
+  if (!PATH_NAME_RE.test(path)) return { error: 404 };
   const session = await auth();
   if (!session?.user) return { error: 401 };
   const user = session.user as SessionUser;

@@ -2,7 +2,7 @@ import { isStreamerAuthorized } from '@/lib/authz'
 import { getViewerIdentity } from '@/lib/viewerIdentities'
 import { kickViewer } from '@/lib/accessBlocks'
 import { kickWebrtcSession } from '@/lib/mediamtx'
-import { revokeApproval } from '@/lib/accessRequests'
+import { approvalKey, revokeApproval } from '@/lib/accessRequests'
 import { NextRequest } from 'next/server'
 
 export async function DELETE(req: NextRequest) {
@@ -21,7 +21,11 @@ export async function DELETE(req: NextRequest) {
   const identity = getViewerIdentity(sessionId)
   if (identity?.ip && identity.path) {
     kickViewer(identity.path, identity)
-    revokeApproval(identity.path, identity.ip, identity.role)
+    revokeApproval(
+      identity.path,
+      approvalKey(identity.role, identity.ip, identity.discordId),
+      identity.role,
+    )
   }
 
   const kicked = await kickWebrtcSession(sessionId)

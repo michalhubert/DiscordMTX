@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto'
 import { auth } from '@/lib/auth'
 import { type SessionUser } from '@/lib/authz'
 import {
+  approvalKey,
   closeAccessRequest,
   keepAccessRequest,
   openAccessRequest,
@@ -35,6 +36,7 @@ import {
   type WatchAccess,
   type WatchEvent,
 } from '@/lib/watchRoomShared'
+import { PATH_NAME_RE } from '@/lib/streamSettings'
 import { NextRequest } from 'next/server'
 
 // Not under /api/stream*: the middleware treats that prefix as streamer-only.
@@ -54,18 +56,20 @@ export async function GET(
   { params }: { params: Promise<{ path: string }> },
 ) {
   const { path } = await params
+  if (!PATH_NAME_RE.test(path)) return new Response(null, { status: 404 })
   const session = await auth()
   if (!session?.user) return new Response(null, { status: 401 })
   const user = session.user as SessionUser
   const ip = getClientIp(req)
   const isGate = req.nextUrl.searchParams.get('mode') === 'gate'
+  const discordId = user.role === 'discord' ? user.id : null
   const requester: AccessRequester = {
     path,
-    ip,
+    ip: approvalKey(user.role, ip, discordId),
     role: user.role,
     name: user.role === 'discord' ? user.name : null,
     image: user.role === 'discord' ? user.image : null,
-    discordId: user.role === 'discord' ? user.id : null,
+    discordId,
   }
 
   // In case a hook was missed.

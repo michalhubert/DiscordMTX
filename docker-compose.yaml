@@ -8,7 +8,7 @@ services:
 
     environment:
       PLAYER_DOMAIN: ${PLAYER_DOMAIN:-}
-      STREAMER_PASSWORD: ${STREAMER_PASSWORD:-}
+      STREAMER_PASSWORD: ${STREAMER_PASSWORD:?Set STREAMER_PASSWORD}
       API_TRUSTED_PROXIES: ${API_TRUSTED_PROXIES:-0.0.0.0/0,::/0}
       WEBRTC_TRUSTED_PROXIES: ${WEBRTC_TRUSTED_PROXIES:-0.0.0.0/0,::/0}
       WEBRTC_ADDITIONAL_HOSTS: ${WEBRTC_ADDITIONAL_HOSTS:-0.0.0.0,rtc.domain.com}
@@ -21,7 +21,7 @@ services:
       # Where the hooks reach Next.js; change if you rename the nextjs service or run it elsewhere
       NEXTJS_URL: ${NEXTJS_URL:-http://nextjs:3000}
       # Sent by the hooks to Next.js; must match the nextjs service
-      HOOK_SECRET: ${HOOK_SECRET:-${NEXTAUTH_SECRET:-changeme-use-a-random-secret}}
+      HOOK_SECRET: ${HOOK_SECRET:-${NEXTAUTH_SECRET:?Set NEXTAUTH_SECRET}}
       # MediaMTX's UDP read buffer size (bytes). MediaMTX docs recommend
       # raising this to avoid dropped WebRTC/RTP packets under load.
       UDP_READ_BUFFER_SIZE: ${UDP_READ_BUFFER_SIZE:-1000000}
@@ -49,17 +49,19 @@ services:
       MEDIAMTX_HOST: ${MEDIAMTX_HOST:-discordmtx}
       MEDIAMTX_PORT: ${MEDIAMTX_PORT:-8889}
       MEDIAMTX_API_PORT: ${MEDIAMTX_API_PORT:-9997}
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-changeme-use-a-random-secret}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?Set NEXTAUTH_SECRET, e.g. openssl rand -hex 32}
       # Checked on MediaMTX's stream hook; must match the discordmtx service
-      HOOK_SECRET: ${HOOK_SECRET:-${NEXTAUTH_SECRET:-changeme-use-a-random-secret}}
+      HOOK_SECRET: ${HOOK_SECRET:-${NEXTAUTH_SECRET:?Set NEXTAUTH_SECRET}}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-}
+      # Header your reverse proxy puts the client's IP in, e.g. cf-connecting-ip (see README)
+      CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-x-forwarded-for}
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
       # Optional per-path webhook overrides, e.g. "desktop:https://discord.com/...,gaming:https://discord.com/..."
       DISCORD_WEBHOOK_URLS: ${DISCORD_WEBHOOK_URLS:-}
       PLAYER_DOMAIN: ${PLAYER_DOMAIN:-}
       # Streamer password, also used by MediaMTX's "streamer" WHIP publish user.
       # Grants access to the /dock OBS HUD.
-      STREAMER_PASSWORD: ${STREAMER_PASSWORD:-}
+      STREAMER_PASSWORD: ${STREAMER_PASSWORD:?Set STREAMER_PASSWORD}
       # Discord OAuth app credentials (https://discord.com/developers/applications)
       DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
       DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}

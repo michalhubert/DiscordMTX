@@ -17,6 +17,18 @@ const DOCK_PREFIXES = [
 
 export const proxy = auth((req) => {
   const { pathname } = req.nextUrl
+  // Other sites can't trigger actions with the user's cookies (or at all with
+  // DISABLE_DOCK_AUTH). Only browsers send this header.
+  const fetchSite = req.headers.get('sec-fetch-site')
+  if (
+    req.method !== 'GET' &&
+    req.method !== 'HEAD' &&
+    fetchSite &&
+    fetchSite !== 'same-origin' &&
+    fetchSite !== 'none'
+  ) {
+    return new Response('Cross-site request blocked', { status: 403 })
+  }
   const isLoggedIn = !!req.auth?.user
   const isLoginPage = pathname.startsWith('/login')
   const isAuthApi = pathname.startsWith('/api/auth')

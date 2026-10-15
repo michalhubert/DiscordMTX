@@ -1,9 +1,10 @@
 import { auth } from '@/lib/auth'
 import { headers } from 'next/headers'
-import { redirect } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { type SessionUser } from '@/lib/authz'
 import { viewerAccess } from '@/lib/watchAccess'
 import { loginUrlFor } from '@/lib/loginUrl'
+import { PATH_NAME_RE } from '@/lib/streamSettings'
 import { getClientIp } from '@/lib/net'
 import Box from '@mui/material/Box'
 import PlayerClient from './PlayerClient'
@@ -19,6 +20,7 @@ export default async function StreamPage({
   }
 
   const { path } = await params
+  if (!PATH_NAME_RE.test(path)) notFound()
   const user = session.user as SessionUser
 
   const ip = getClientIp({ headers: await headers() })

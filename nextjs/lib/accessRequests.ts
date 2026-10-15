@@ -25,6 +25,7 @@ export type PendingRequest = {
 
 export type AccessRequester = {
   path: string;
+  // See approvalKey.
   ip: string;
   role?: string;
   name: string | null;
@@ -41,6 +42,11 @@ const requestKey = (path: string, ip: string, role?: string) => `${path}\n${ip}\
 // Per request; one person can have several tabs.
 const store = globalThis as typeof globalThis & { __openAccessRequests?: Map<string, number> };
 const openRequests = (store.__openAccessRequests ??= new Map<string, number>());
+
+// Discord viewers are approved by account, others (shared password) only by IP.
+export function approvalKey(role: string | undefined, ip: string, discordId?: string | null): string {
+  return role === "discord" && discordId ? `discord:${discordId}` : ip;
+}
 
 export function isApproved(path: string, ip: string, role?: string): boolean {
   return isViewerApproved(path, ip, roleKey(role));
