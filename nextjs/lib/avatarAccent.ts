@@ -2,8 +2,21 @@ import { useEffect } from 'react'
 import { Vibrant } from 'node-vibrant/browser'
 import { useThemeStore } from './themeStore'
 
+// Fetched rather than passed as a URL: Firefox may reuse the <img> tags' non-CORS
+// copy, which can't be read.
+async function readAccent(image: string): Promise<string | null> {
+  const blob = await (await fetch(image)).blob()
+  const url = URL.createObjectURL(blob)
+  try {
+    const palette = await Vibrant.from(url).getPalette()
+    // null for greyscale pictures, which falls back to the custom colour.
+    return (palette.Vibrant ?? palette.LightVibrant)?.hex ?? null
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
 // Keeps the stored avatar accent in sync with the viewer's current picture.
-// Discord's and Derpibooru's CDNs allow CORS, so the picture is readable.
 export function useAvatarAccentDetection(image: string | null | undefined) {
   const setAvatarAccent = useThemeStore((s) => s.setAvatarAccent)
   const setAvailable = useThemeStore((s) => s.setAvatarAccentAvailable)
@@ -18,15 +31,12 @@ export function useAvatarAccentDetection(image: string | null | undefined) {
   useEffect(() => {
     if (!image) return
     let cancelled = false
-    Vibrant.from(image)
-      .getPalette()
-      .then((palette) => {
-        // null for greyscale pictures, which falls back to the default accent.
-        const swatch = palette.Vibrant ?? palette.LightVibrant
-        if (!cancelled) setAvatarAccent(swatch?.hex ?? null)
+    readAccent(image)
+      .then((accent) => {
+        if (!cancelled) setAvatarAccent(accent)
       })
       .catch(() => {
-        // Unreadable picture: keep the previous accent.
+        if (!cancelled) setAvatarAccent(null)
       })
     return () => {
       cancelled = true

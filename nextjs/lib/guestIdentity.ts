@@ -223,6 +223,14 @@ export function ponyKeyFor(
   return null
 }
 
+export function ponyKeyForSession(
+  identity: { role?: string; name?: string; ip?: string; path?: string } | undefined,
+): { path: string; ponyKey: string } | null {
+  if (!identity?.ip || !identity.path) return null
+  const ponyKey = ponyKeyFor(identity.role, identity.name, identity.ip, identity.path)
+  return ponyKey ? { path: identity.path, ponyKey } : null
+}
+
 function identityKey(path: string, key: string): string {
   return `${path}::${key}`
 }

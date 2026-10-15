@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
+import { loginUrlFor } from '@/lib/loginUrl'
+import { waitForIceGathering } from '@/lib/webrtc'
 
 export type PlayerStatus =
-  'connecting' | 'connected' | 'offline' | 'error' | 'kicked'
+  'connecting' | 'connected' | 'offline' | 'error'
 
 interface UseWhepPlayerOptions {
   whepUrl: string
@@ -79,19 +81,7 @@ export function useWhepPlayer({
         const offer = await pc.createOffer()
         await pc.setLocalDescription(offer)
 
-        if (pc.iceGatheringState !== 'complete') {
-          await new Promise<void>((resolve) => {
-            const timeout = setTimeout(resolve, 2000)
-            function checkState() {
-              if (pc.iceGatheringState === 'complete') {
-                clearTimeout(timeout)
-                pc.removeEventListener('icegatheringstatechange', checkState)
-                resolve()
-              }
-            }
-            pc.addEventListener('icegatheringstatechange', checkState)
-          })
-        }
+        await waitForIceGathering(pc)
 
         const res = await fetch(whepUrl, {
           method: 'POST',
@@ -103,38 +93,12 @@ export function useWhepPlayer({
           if (res.status === 404 || res.status === 503) {
             setStatus('offline')
           } else if (res.status === 401) {
-            // Password changed or session invalid -> bounce to login page immediately
             window.location.href = '/login'
             return
           } else if (res.status === 403) {
-            const text = await res.text().catch(() => '')
-            let kickedUntil: number | null = null
-            try {
-              const data = JSON.parse(text)
-              if (
-                data?.error === 'kicked' &&
-                typeof data.kickedUntil === 'number'
-              ) {
-                kickedUntil = data.kickedUntil
-              }
-            } catch {
-              // Not JSON - fall through to the other 403 cases below.
-            }
-
-            if (kickedUntil !== null) {
-              // Kicked - wait out the real cooldown instead of retrying every RECONNECT_DELAY_MS
-              setStatus('kicked')
-              pc.close()
-              scheduleReconnect(Math.max(kickedUntil - Date.now(), 1000))
-              return
-            }
-
-            if (text.includes('Access not approved')) {
-              // Access revoked or waiting room needed -> reload so JoinGate handles it
-              window.location.reload()
-              return
-            }
-            setStatus('error')
+            // Blocked or not approved
+            window.location.href = loginUrlFor(window.location.pathname.slice(1))
+            return
           } else {
             setStatus('error')
           }

@@ -10,6 +10,7 @@ URL="https://${DOMAIN}/${STREAM_PATH}/"
 # message (Next.js owns the Discord webhook state, see lib/discordWebhook.ts).
 curl -s -X POST "http://nextjs:3000/api/streams/hook" \
   -H "Content-Type: application/json" \
+  -H "X-Hook-Secret: ${HOOK_SECRET:-}" \
   -d "{\"path\":\"${STREAM_PATH}\",\"action\":\"ready\"}" >/dev/null 2>&1 || true
 
 echo "========================================="

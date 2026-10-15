@@ -1,30 +1,20 @@
 import {
   claimGuestReroll,
   GUEST_REROLL_COOLDOWN_MS,
-  ponyKeyFor,
   rerollGuestAvatar,
 } from '@/lib/guestIdentity'
-import { authorizeWatch } from '@/lib/watchAccess'
+import { authorizeGuest } from '@/lib/watchAccess'
 import { refreshWatchGuest } from '@/lib/watchRoom'
 import { NextRequest } from 'next/server'
 
-// Gives a guest a different picture of their pony, once per cooldown.
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ path: string }> },
 ) {
   const { path } = await params
-  const result = await authorizeWatch(req, path)
-  if (!result.user) return new Response(null, { status: result.error })
-  const ponyKey = ponyKeyFor(
-    result.user.role,
-    result.user.name,
-    result.ip,
-    path,
-  )
-  if (!ponyKey) {
-    return new Response('No pony identity', { status: 400 })
-  }
+  const guest = await authorizeGuest(req, path)
+  if (guest instanceof Response) return guest
+  const { ponyKey } = guest
 
   const waitMs = claimGuestReroll(path, ponyKey)
   if (waitMs > 0) {

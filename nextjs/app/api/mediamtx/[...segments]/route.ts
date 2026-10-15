@@ -1,5 +1,6 @@
 import { isStreamerAuthorized } from '@/lib/authz'
 import { syncStreamState } from '@/lib/streamState'
+import { mediamtxApiBase } from '@/lib/mediamtx'
 import { NextRequest } from 'next/server'
 
 export async function GET(
@@ -11,9 +12,7 @@ export async function GET(
   }
 
   const { segments } = await params
-  const host = process.env.MEDIAMTX_HOST ?? 'discordmtx'
-  const apiPort = process.env.MEDIAMTX_API_PORT ?? '9997'
-  const upstream = `http://${host}:${apiPort}/v3/${segments.join('/')}${req.nextUrl.search}`
+  const upstream = `${mediamtxApiBase()}/v3/${segments.join('/')}${req.nextUrl.search}`
 
   try {
     const res = await fetch(upstream, {
@@ -38,9 +37,6 @@ export async function GET(
       headers: { 'Content-Type': 'application/json' },
     })
   } catch {
-    return new Response(JSON.stringify({ error: 'MediaMTX API unreachable' }), {
-      status: 502,
-      headers: { 'Content-Type': 'application/json' },
-    })
+    return Response.json({ error: 'MediaMTX API unreachable' }, { status: 502 })
   }
 }

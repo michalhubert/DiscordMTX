@@ -106,6 +106,7 @@ docker compose down
 | `MEDIAMTX_PORT`           | Port of the discordmtx service the Next.js WHEP proxy talks to (default `8889`) |
 | `MEDIAMTX_API_PORT`       | Port of the discordmtx MediaMTX control API used by `/dock` (default `9997`) |
 | `NEXTAUTH_SECRET`         | Random secret used to sign Next.js session cookies |
+| `HOOK_SECRET`             | Shared secret MediaMTX's stream hooks send to `/api/streams/hook` (defaults to `NEXTAUTH_SECRET`; set the same value on both services) |
 | `NEXTAUTH_URL`            | Public URL of the Next.js frontend                 |
 | `DISCORD_CLIENT_ID`       | Discord OAuth application client ID                |
 | `DISCORD_CLIENT_SECRET`   | Discord OAuth application client secret            |

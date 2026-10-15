@@ -1,5 +1,5 @@
-import { ponyKeyFor, setGuestKeep } from '@/lib/guestIdentity'
-import { authorizeWatch } from '@/lib/watchAccess'
+import { setGuestKeep } from '@/lib/guestIdentity'
+import { authorizeGuest } from '@/lib/watchAccess'
 import { NextRequest } from 'next/server'
 
 export async function POST(
@@ -7,17 +7,9 @@ export async function POST(
   { params }: { params: Promise<{ path: string }> },
 ) {
   const { path } = await params
-  const result = await authorizeWatch(req, path)
-  if (!result.user) return new Response(null, { status: result.error })
-  const ponyKey = ponyKeyFor(
-    result.user.role,
-    result.user.name,
-    result.ip,
-    path,
-  )
-  if (!ponyKey) {
-    return new Response('No pony identity', { status: 400 })
-  }
+  const guest = await authorizeGuest(req, path)
+  if (guest instanceof Response) return guest
+  const { ponyKey } = guest
 
   const body = await req.json().catch(() => null)
   if (typeof body?.keep !== 'boolean') {

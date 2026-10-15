@@ -1,32 +1,23 @@
 import { isStreamerAuthorized } from '@/lib/authz'
+import { getStreamSettings, saveStreamSettings } from '@/lib/db'
 import {
+  CONTENT_HINTS,
   DEFAULT_STREAM_SETTINGS,
-  getStreamSettings,
-  saveStreamSettings,
-  StreamSettings,
-} from '@/lib/db'
+  DEGRADATION_PREFERENCES,
+  PATH_NAME_RE,
+  SOURCE_TYPES,
+  VIDEO_CODECS,
+  type StreamSettings,
+} from '@/lib/streamSettings'
 import { NextRequest } from 'next/server'
 
-function json(data: unknown, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
+function pickEnum<T extends string>(
+  value: unknown,
+  list: readonly T[],
+  fallback: T,
+): T {
+  return list.includes(value as T) ? (value as T) : fallback
 }
-
-const SOURCE_TYPES = ['monitor', 'window', 'browser']
-const VIDEO_CODECS = ['auto', 'vp9', 'vp8', 'h264', 'av1']
-const CONTENT_HINTS = ['none', 'motion', 'detail', 'text']
-const DEGRADATION_PREFERENCES = [
-  'balanced',
-  'maintain-framerate',
-  'maintain-resolution',
-]
-
-// MediaMTX path names must be safe for MTX_PATHS_<NAME>_* env vars and URLs:
-// letters, digits, and forward slashes only (matches MediaMTX's own path
-// naming rules), 1-64 chars.
-const PATH_NAME_RE = /^[A-Za-z0-9/]{1,64}$/
 
 function sanitizeSettings(input: unknown): StreamSettings | null {
   if (!input || typeof input !== 'object') return null
@@ -37,23 +28,26 @@ function sanitizeSettings(input: unknown): StreamSettings | null {
       ? raw.path
       : DEFAULT_STREAM_SETTINGS.path
 
-  const sourceType = SOURCE_TYPES.includes(raw.sourceType as string)
-    ? (raw.sourceType as StreamSettings['sourceType'])
-    : DEFAULT_STREAM_SETTINGS.sourceType
-
-  const videoCodec = VIDEO_CODECS.includes(raw.videoCodec as string)
-    ? (raw.videoCodec as StreamSettings['videoCodec'])
-    : DEFAULT_STREAM_SETTINGS.videoCodec
-
-  const contentHint = CONTENT_HINTS.includes(raw.contentHint as string)
-    ? (raw.contentHint as StreamSettings['contentHint'])
-    : DEFAULT_STREAM_SETTINGS.contentHint
-
-  const degradationPreference = DEGRADATION_PREFERENCES.includes(
-    raw.degradationPreference as string,
+  const sourceType = pickEnum(
+    raw.sourceType,
+    SOURCE_TYPES,
+    DEFAULT_STREAM_SETTINGS.sourceType,
   )
-    ? (raw.degradationPreference as StreamSettings['degradationPreference'])
-    : DEFAULT_STREAM_SETTINGS.degradationPreference
+  const videoCodec = pickEnum(
+    raw.videoCodec,
+    VIDEO_CODECS,
+    DEFAULT_STREAM_SETTINGS.videoCodec,
+  )
+  const contentHint = pickEnum(
+    raw.contentHint,
+    CONTENT_HINTS,
+    DEFAULT_STREAM_SETTINGS.contentHint,
+  )
+  const degradationPreference = pickEnum(
+    raw.degradationPreference,
+    DEGRADATION_PREFERENCES,
+    DEFAULT_STREAM_SETTINGS.degradationPreference,
+  )
 
   const clamp = (
     value: unknown,
@@ -100,7 +94,7 @@ export async function GET() {
     return new Response('Unauthorized', { status: 401 })
   }
 
-  return json(getStreamSettings())
+  return Response.json(getStreamSettings())
 }
 
 export async function POST(req: NextRequest) {
@@ -112,14 +106,17 @@ export async function POST(req: NextRequest) {
   try {
     body = await req.json()
   } catch {
-    return json({ error: 'Invalid JSON body' }, 400)
+    return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
   const settings = sanitizeSettings(body)
   if (!settings) {
-    return json({ error: 'Invalid settings payload' }, 400)
+    return Response.json(
+      { error: 'Invalid settings payload' },
+      { status: 400 },
+    )
   }
 
   saveStreamSettings(settings)
-  return json(settings)
+  return Response.json(settings)
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import Avatar from '@mui/material/Avatar'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -26,6 +26,8 @@ import {
 import AccentPicker from '@/app/components/AccentPicker'
 import AvatarPreview from '@/app/components/AvatarPreview'
 import { accentAlpha } from '@/lib/theme'
+import { useMediamtxPaths } from '../hooks/useMediamtxPaths'
+import { usePolling } from '../hooks/usePolling'
 
 type WebrtcSession = {
   id: string
@@ -69,6 +71,34 @@ type PendingRequest = {
 
 const MAX_EVENTS = 20
 
+type HudStatus = 'checking' | 'live' | 'offline' | 'error'
+
+const STATUS_LABELS: Record<HudStatus, string> = {
+  checking: 'Checking',
+  live: 'LIVE',
+  offline: 'OFFLINE',
+  error: 'API ERROR',
+}
+
+function requestKeyOf(req: PendingRequest) {
+  return `${req.path}:${req.ip}:${req.role ?? 'guest'}`
+}
+
+async function readItems<T>(result: PromiseSettledResult<Response>): Promise<{
+  items: T[]
+  authError: boolean
+  apiError: boolean
+}> {
+  if (result.status === 'fulfilled' && result.value.ok) {
+    const data = await result.value.json()
+    return { items: data.items || [], authError: false, apiError: false }
+  }
+  const authError =
+    result.status === 'fulfilled' &&
+    (result.value.status === 401 || result.value.status === 403)
+  return { items: [], authError, apiError: !authError }
+}
+
 function formatBytes(bytes?: number) {
   if (!bytes || bytes === 0) return '0 B'
   const k = 1024
@@ -92,15 +122,13 @@ function formatDuration(startTime?: string) {
 
 export default function DockClient({ embedded = false }: { embedded?: boolean }) {
   const [soundEnabled, setSoundEnabled] = useState(true)
-  const [status, setStatus] = useState<
-    'checking' | 'live' | 'offline' | 'error'
-  >('checking')
+  const [status, setStatus] = useState<HudStatus>('checking')
   const [viewerCount, setViewerCount] = useState(0)
   const [readers, setReaders] = useState<WebrtcSession[]>([])
   const [events, setEvents] = useState<StreamEvent[]>([])
   const [viewerPassword, setViewerPassword] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
-  const [availablePaths, setAvailablePaths] = useState<string[]>([])
+  const availablePaths = useMediamtxPaths(10000)
   const [visibilities, setVisibilities] = useState<Record<string, Visibility>>(
     {},
   )
@@ -118,11 +146,9 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
   const knownSessions = useRef<Map<string, string>>(new Map())
   const initialLoad = useRef(true)
   const audioCtxRef = useRef<AudioContext | null>(null)
-  const prevStatusRef = useRef<'checking' | 'live' | 'offline' | 'error'>(
-    'checking',
-  )
+  const prevStatusRef = useRef<HudStatus>('checking')
 
-  function playChime(isJoin = true) {
+  function withAudio(play: (ctx: AudioContext, now: number) => void) {
     if (!soundEnabledRef.current) return
     try {
       if (!audioCtxRef.current) {
@@ -134,53 +160,40 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
       }
       const audioCtx = audioCtxRef.current
       if (audioCtx.state === 'suspended') audioCtx.resume()
+      play(audioCtx, audioCtx.currentTime)
+    } catch (e) {
+      console.error('Audio playback error:', e)
+    }
+  }
 
-      const now = audioCtx.currentTime
-      const osc = audioCtx.createOscillator()
-      const gain = audioCtx.createGain()
+  function playChime(isJoin = true) {
+    withAudio((ctx, now) => {
+      const [first, second] = isJoin ? [587.33, 880] : [880, 587.33]
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
 
       osc.type = 'sine'
-      if (isJoin) {
-        osc.frequency.setValueAtTime(587.33, now)
-        osc.frequency.setValueAtTime(880, now + 0.1)
-      } else {
-        osc.frequency.setValueAtTime(880, now)
-        osc.frequency.setValueAtTime(587.33, now + 0.1)
-      }
+      osc.frequency.setValueAtTime(first, now)
+      osc.frequency.setValueAtTime(second, now + 0.1)
 
       gain.gain.setValueAtTime(0.12, now)
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35)
 
       osc.connect(gain)
-      gain.connect(audioCtx.destination)
+      gain.connect(ctx.destination)
 
       osc.start(now)
       osc.stop(now + 0.35)
-    } catch (e) {
-      console.error('Audio chime error:', e)
-    }
+    })
   }
 
   function playStreamTone(isStart = true) {
-    if (!soundEnabledRef.current) return
-    try {
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new (
-          window.AudioContext ||
-          (window as unknown as { webkitAudioContext: typeof AudioContext })
-            .webkitAudioContext
-        )()
-      }
-      const audioCtx = audioCtxRef.current
-      if (audioCtx.state === 'suspended') audioCtx.resume()
-
-      const now = audioCtx.currentTime
+    withAudio((ctx, now) => {
       const notes = isStart ? [523.25, 783.99] : [783.99, 523.25]
-
       notes.forEach((freq, i) => {
         const start = now + i * 0.09
-        const osc = audioCtx.createOscillator()
-        const gain = audioCtx.createGain()
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
 
         osc.type = 'sine'
         osc.frequency.setValueAtTime(freq, start)
@@ -190,14 +203,12 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
         gain.gain.exponentialRampToValueAtTime(0.001, start + 0.18)
 
         osc.connect(gain)
-        gain.connect(audioCtx.destination)
+        gain.connect(ctx.destination)
 
         osc.start(start)
         osc.stop(start + 0.18)
       })
-    } catch (e) {
-      console.error('Audio tone error:', e)
-    }
+    })
   }
 
   function logEvent(type: 'join' | 'leave', text: string, viewer: string) {
@@ -208,63 +219,30 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
     )
   }
 
-  useEffect(() => {
-    let cancelled = false
-
-    async function refreshData() {
+  usePolling(
+    async (isCancelled) => {
       try {
-        const [sessionsRes, pathsRes] = await Promise.allSettled([
+        const results = await Promise.allSettled([
           fetch('/api/dock/viewers'),
           fetch('/api/mediamtx/paths/list'),
         ])
+        const [sessionsResult, pathsResult] = await Promise.all([
+          readItems<WebrtcSession>(results[0]),
+          readItems<MtxPath>(results[1]),
+        ])
+        const sessions = sessionsResult.items
+        const paths = pathsResult.items
+        const hasAuthError = sessionsResult.authError || pathsResult.authError
+        const hasApiError = sessionsResult.apiError || pathsResult.apiError
 
-        let sessions: WebrtcSession[] = []
-        let paths: MtxPath[] = []
-        let hasAuthError = false
-        let hasApiError = false
-
-        if (sessionsRes.status === 'fulfilled') {
-          if (sessionsRes.value.ok) {
-            const sData = await sessionsRes.value.json()
-            sessions = sData.items || []
-          } else if (
-            sessionsRes.value.status === 401 ||
-            sessionsRes.value.status === 403
-          ) {
-            hasAuthError = true
-          } else {
-            hasApiError = true
-          }
-        } else {
-          hasApiError = true
-        }
-
-        if (pathsRes.status === 'fulfilled') {
-          if (pathsRes.value.ok) {
-            const pData = await pathsRes.value.json()
-            paths = pData.items || []
-          } else if (
-            pathsRes.value.status === 401 ||
-            pathsRes.value.status === 403
-          ) {
-            hasAuthError = true
-          } else {
-            hasApiError = true
-          }
-        } else {
-          hasApiError = true
-        }
-
-        if (cancelled) return
+        if (isCancelled()) return
 
         const currentReaders = sessions.filter(
-          (s) =>
-            s.state === 'read' ||
-            (s.state !== 'publish' && s.state !== undefined),
+          (s) => s.state !== undefined && s.state !== 'publish',
         )
         const activePublishers = paths.filter((p) => p.ready)
 
-        let newStatus: 'checking' | 'live' | 'offline' | 'error'
+        let newStatus: HudStatus
         if (hasAuthError) {
           newStatus = 'error'
         } else if (hasApiError && paths.length === 0 && sessions.length === 0) {
@@ -288,7 +266,7 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
         prevStatusRef.current = newStatus
         setStatus(newStatus)
 
-        if (!cancelled) setCurrentPath(activePublishers[0]?.name ?? '')
+        setCurrentPath(activePublishers[0]?.name ?? '')
 
         const totalPathReaders = paths.reduce(
           (acc, p) => acc + (p.readers ? p.readers.length : 0),
@@ -323,20 +301,13 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
         console.error('Error updating streamer HUD:', err)
         setStatus('error')
       }
-    }
+    },
+    1000,
+    [],
+  )
 
-    refreshData()
-    const interval = setInterval(refreshData, 1000)
-    return () => {
-      cancelled = true
-      clearInterval(interval)
-    }
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function refreshPassword() {
+  usePolling(
+    async (isCancelled) => {
       if (!currentPath) {
         setViewerPassword(null)
         return
@@ -347,97 +318,44 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
         )
         if (!res.ok) return
         const data = await res.json()
-        if (!cancelled) setViewerPassword(data.password ?? null)
+        if (!isCancelled()) setViewerPassword(data.password ?? null)
       } catch (err) {
         console.error('Error fetching viewer password:', err)
       }
-    }
+    },
+    5000,
+    [currentPath],
+  )
 
-    refreshPassword()
-    const interval = setInterval(refreshPassword, 5000)
-    return () => {
-      cancelled = true
-      clearInterval(interval)
-    }
-  }, [currentPath])
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function refreshPaths() {
-      try {
-        const [configRes, runtimeRes] = await Promise.allSettled([
-          fetch('/api/mediamtx/config/paths/list'),
-          fetch('/api/mediamtx/paths/list'),
-        ])
-
-        const names = new Set<string>()
-        for (const res of [configRes, runtimeRes]) {
-          if (res.status === 'fulfilled' && res.value.ok) {
-            const data = await res.value.json()
-            for (const item of data.items ?? []) {
-              if (item?.name) names.add(item.name as string)
-            }
-          }
-        }
-
-        if (!cancelled) setAvailablePaths(Array.from(names).sort())
-      } catch (err) {
-        console.error('Failed to load MediaMTX path list:', err)
-      }
-    }
-
-    refreshPaths()
-    const interval = setInterval(refreshPaths, 10000)
-    return () => {
-      cancelled = true
-      clearInterval(interval)
-    }
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function refreshVisibilities() {
+  usePolling(
+    async (isCancelled) => {
       try {
         const res = await fetch('/api/streams/visibility')
         if (!res.ok) return
         const data = await res.json()
-        if (!cancelled) setVisibilities(data ?? {})
+        if (!isCancelled()) setVisibilities(data ?? {})
       } catch (err) {
         console.error('Failed to load stream visibility settings:', err)
       }
-    }
+    },
+    5000,
+    [],
+  )
 
-    refreshVisibilities()
-    const interval = setInterval(refreshVisibilities, 5000)
-    return () => {
-      cancelled = true
-      clearInterval(interval)
-    }
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function refreshPending() {
+  usePolling(
+    async (isCancelled) => {
       try {
         const res = await fetch('/api/streams/pending')
         if (!res.ok) return
         const data = await res.json()
-        if (!cancelled) setPendingRequests(data.items ?? [])
+        if (!isCancelled()) setPendingRequests(data.items ?? [])
       } catch (err) {
         console.error('Failed to load pending join requests:', err)
       }
-    }
-
-    refreshPending()
-    const interval = setInterval(refreshPending, 2000)
-    return () => {
-      cancelled = true
-      clearInterval(interval)
-    }
-  }, [])
+    },
+    2000,
+    [],
+  )
 
   async function toggleVisibility(path: string) {
     const next: Visibility =
@@ -459,47 +377,25 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
     }
   }
 
-  async function approveRequest(req: PendingRequest) {
-    const requestKey = `${req.path}:${req.ip}:${req.role ?? 'guest'}`
+  async function respondToRequest(
+    req: PendingRequest,
+    action: 'approve' | 'deny',
+  ) {
+    const requestKey = requestKeyOf(req)
     setBusyRequestKey(requestKey)
     try {
-      const res = await fetch('/api/streams/pending/approve', {
+      const res = await fetch(`/api/streams/pending/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: req.path, ip: req.ip, role: req.role }),
       })
       if (res.ok) {
         setPendingRequests((prev) =>
-          prev.filter(
-            (r) => `${r.path}:${r.ip}:${r.role ?? 'guest'}` !== requestKey,
-          ),
+          prev.filter((r) => requestKeyOf(r) !== requestKey),
         )
       }
     } catch (err) {
-      console.error('Failed to approve join request:', err)
-    } finally {
-      setBusyRequestKey(null)
-    }
-  }
-
-  async function denyRequest(req: PendingRequest) {
-    const requestKey = `${req.path}:${req.ip}:${req.role ?? 'guest'}`
-    setBusyRequestKey(requestKey)
-    try {
-      const res = await fetch('/api/streams/pending/deny', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: req.path, ip: req.ip, role: req.role }),
-      })
-      if (res.ok) {
-        setPendingRequests((prev) =>
-          prev.filter(
-            (r) => `${r.path}:${r.ip}:${r.role ?? 'guest'}` !== requestKey,
-          ),
-        )
-      }
-    } catch (err) {
-      console.error('Failed to deny join request:', err)
+      console.error(`Failed to ${action} join request:`, err)
     } finally {
       setBusyRequestKey(null)
     }
@@ -573,14 +469,7 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
     }
   }
 
-  const statusLabel =
-    status === 'live'
-      ? 'LIVE'
-      : status === 'error'
-        ? 'API ERROR'
-        : status === 'offline'
-          ? 'OFFLINE'
-          : 'Checking'
+  const statusLabel = STATUS_LABELS[status]
 
   return (
     <Box
@@ -725,7 +614,7 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
           <EmptyRow>No pending requests</EmptyRow>
         ) : (
           pendingRequests.map((req) => {
-            const requestKey = `${req.path}:${req.ip}:${req.role ?? 'guest'}`
+            const requestKey = requestKeyOf(req)
             return (
               <Row key={requestKey}>
                 <Stack direction="row" spacing={1} sx={{ alignItems: 'center', minWidth: 0 }}>
@@ -742,7 +631,7 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
                 <Stack direction="row" spacing={0.75} sx={{ flexShrink: 0 }}>
                   <Button
                     size="small"
-                    onClick={() => approveRequest(req)}
+                    onClick={() => respondToRequest(req, 'approve')}
                     disabled={busyRequestKey === requestKey}
                     sx={tintedButtonSx('success')}
                   >
@@ -750,7 +639,7 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
                   </Button>
                   <Button
                     size="small"
-                    onClick={() => denyRequest(req)}
+                    onClick={() => respondToRequest(req, 'deny')}
                     disabled={busyRequestKey === requestKey}
                     sx={tintedButtonSx('error')}
                   >

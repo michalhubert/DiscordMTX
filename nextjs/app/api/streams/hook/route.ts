@@ -1,8 +1,21 @@
 import { syncStreamState } from '@/lib/streamState'
 import { syncDiscordWebhookMessage } from '@/lib/discordWebhook'
+import { timingSafeEqual } from 'crypto'
 import { NextRequest } from 'next/server'
 
+function hasHookSecret(req: NextRequest): boolean {
+  const expected = process.env.HOOK_SECRET
+  const given = req.headers.get('x-hook-secret')
+  if (!expected || !given) return false
+  const a = Buffer.from(given)
+  const b = Buffer.from(expected)
+  return a.length === b.length && timingSafeEqual(a, b)
+}
+
 export async function POST(req: NextRequest) {
+  if (!hasHookSecret(req)) {
+    return new Response('Unauthorized', { status: 401 })
+  }
   try {
     const body = await req.json()
     const { path, action } = body || {}

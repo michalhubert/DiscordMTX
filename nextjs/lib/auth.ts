@@ -37,19 +37,10 @@ export const config: NextAuthConfig = {
         password: { label: "Password", type: "password" },
       },
       async authorize({ password }) {
-        const { getViewerPassword, getAllViewerPasswords } = await import("@/lib/db");
-        if (typeof password !== "string") return null;
-        const storedPassword = getViewerPassword("default");
-        if (storedPassword && password === storedPassword) {
-          return { id: "viewer", name: "Viewer", role: "viewer", password: storedPassword };
-        }
-        const all = getAllViewerPasswords();
-        for (const pass of Object.values(all)) {
-          if (password === pass) {
-            return { id: "viewer", name: "Viewer", role: "viewer", password: pass };
-          }
-        }
-        return null;
+        const { getAllViewerPasswords } = await import("@/lib/db");
+        if (typeof password !== "string" || !password) return null;
+        const match = Object.values(getAllViewerPasswords()).includes(password);
+        return match ? { id: "viewer", name: "Viewer", role: "viewer", password } : null;
       },
     }),
 

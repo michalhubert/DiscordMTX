@@ -15,44 +15,25 @@ import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import { Monitor, Radio, RefreshCw, Save, Square } from 'lucide-react'
 import DockClient from '../dock/DockClient'
-
-type SourceType = 'monitor' | 'window' | 'browser'
-type VideoCodec = 'auto' | 'vp9' | 'vp8' | 'h264' | 'av1'
-type ContentHint = 'none' | 'motion' | 'detail' | 'text'
-type DegradationPreference =
-  'balanced' | 'maintain-framerate' | 'maintain-resolution'
-
-type StreamSettings = {
-  path: string
-  sourceType: SourceType
-  fixedResolution: boolean
-  width: number
-  height: number
-  fps: number
-  videoBitrateKbps: number
-  videoCodec: VideoCodec
-  contentHint: ContentHint
-  degradationPreference: DegradationPreference
-  includeAudio: boolean
-  audioBitrateKbps: number
-}
-
-const DEFAULT_SETTINGS: StreamSettings = {
-  path: '',
-  sourceType: 'monitor',
-  fixedResolution: false,
-  width: 1920,
-  height: 1080,
-  fps: 30,
-  videoBitrateKbps: 6000,
-  videoCodec: 'h264',
-  contentHint: 'motion',
-  degradationPreference: 'maintain-framerate',
-  includeAudio: true,
-  audioBitrateKbps: 128,
-}
+import { useMediamtxPaths } from '../hooks/useMediamtxPaths'
+import { waitForIceGathering } from '@/lib/webrtc'
+import {
+  DEFAULT_STREAM_SETTINGS as DEFAULT_SETTINGS,
+  type StreamContentHint as ContentHint,
+  type StreamDegradationPreference as DegradationPreference,
+  type StreamSettings,
+  type StreamSourceType as SourceType,
+  type StreamVideoCodec as VideoCodec,
+} from '@/lib/streamSettings'
 
 type Status = 'idle' | 'starting' | 'live' | 'error'
+
+const STATUS_LABELS: Record<Status, string> = {
+  idle: 'Idle',
+  starting: 'Starting…',
+  live: 'Live',
+  error: 'Error',
+}
 
 // Sets the Opus target bitrate via SDP munging (no setParameters() equivalent
 // for audio), and disables DTX / enables in-band FEC to avoid audio choppiness.
@@ -147,7 +128,7 @@ export default function StreamClient() {
   const [status, setStatus] = useState<Status>('idle')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [changingSource, setChangingSource] = useState(false)
-  const [availablePaths, setAvailablePaths] = useState<string[]>([])
+  const availablePaths = useMediamtxPaths()
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
@@ -177,41 +158,9 @@ export default function StreamClient() {
     }
   }, [])
 
-  // Only paths configured in MediaMTX (paths.yml) can be published to.
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const [configRes, runtimeRes] = await Promise.allSettled([
-          fetch('/api/mediamtx/config/paths/list'),
-          fetch('/api/mediamtx/paths/list'),
-        ])
-
-        const names = new Set<string>()
-        for (const res of [configRes, runtimeRes]) {
-          if (res.status === 'fulfilled' && res.value.ok) {
-            const data = await res.value.json()
-            for (const item of data.items ?? []) {
-              if (item?.name) names.add(item.name as string)
-            }
-          }
-        }
-
-        if (!cancelled) {
-          const sortedPaths = Array.from(names).sort()
-          setAvailablePaths(sortedPaths)
-          if (sortedPaths.length > 0 && !settings.path) {
-            setSettings((prev) => ({ ...prev, path: sortedPaths[0] }))
-          }
-        }
-      } catch (err) {
-        console.error('Failed to load MediaMTX path list:', err)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [settings.path])
+  if (availablePaths.length > 0 && !settings.path) {
+    setSettings((prev) => ({ ...prev, path: availablePaths[0] }))
+  }
 
   const stopStream = useCallback(async () => {
     const pc = pcRef.current
@@ -399,20 +348,14 @@ export default function StreamClient() {
         if (!params.encodings || params.encodings.length === 0) {
           params.encodings = [{}]
         }
-        params.encodings[0].maxBitrate = settings.videoBitrateKbps * 1000
-        params.encodings[0].maxFramerate = settings.fps
-        ;(
-          params.encodings[0] as RTCRtpEncodingParameters & {
-            priority?: string
-            networkPriority?: string
-          }
-        ).priority = 'high'
-        ;(
-          params.encodings[0] as RTCRtpEncodingParameters & {
-            priority?: string
-            networkPriority?: string
-          }
-        ).networkPriority = 'high'
+        const encoding = params.encodings[0] as RTCRtpEncodingParameters & {
+          priority?: string
+          networkPriority?: string
+        }
+        encoding.maxBitrate = settings.videoBitrateKbps * 1000
+        encoding.maxFramerate = settings.fps
+        encoding.priority = 'high'
+        encoding.networkPriority = 'high'
         params.degradationPreference = settings.degradationPreference
         await videoTransceiver.sender.setParameters(params)
       } catch (err) {
@@ -443,19 +386,7 @@ export default function StreamClient() {
       }
       await pc.setLocalDescription({ type: 'offer', sdp })
 
-      if (pc.iceGatheringState !== 'complete') {
-        await new Promise<void>((resolve) => {
-          const timeout = setTimeout(resolve, 2000)
-          function checkState() {
-            if (pc.iceGatheringState === 'complete') {
-              clearTimeout(timeout)
-              pc.removeEventListener('icegatheringstatechange', checkState)
-              resolve()
-            }
-          }
-          pc.addEventListener('icegatheringstatechange', checkState)
-        })
-      }
+      await waitForIceGathering(pc)
 
       whipPathRef.current = settings.path || DEFAULT_SETTINGS.path
       const res = await fetch(
@@ -607,15 +538,7 @@ export default function StreamClient() {
             </Stack>
             <Chip
               size="small"
-              label={
-                status === 'starting'
-                  ? 'Starting…'
-                  : status === 'live'
-                    ? 'Live'
-                    : status === 'error'
-                      ? 'Error'
-                      : 'Idle'
-              }
+              label={STATUS_LABELS[status]}
               icon={
                 <Box
                   component="span"

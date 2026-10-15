@@ -1,5 +1,3 @@
-import { NextRequest } from "next/server";
-
 // Best-effort client IP extraction. When the site is proxied through
 // Cloudflare, CF-Connecting-IP is Cloudflare's own record of the client's
 // real IP and can't be spoofed by the client, so it takes priority over
@@ -10,7 +8,7 @@ import { NextRequest } from "next/server";
 // Falls back to X-Forwarded-For/X-Real-IP, which is fine since the reverse
 // proxy in front of this app is expected to set them (see
 // API_TRUSTED_PROXIES in docker-compose.yaml).
-export function getClientIp(req: NextRequest): string {
+export function getClientIp(req: { headers: Headers }): string {
   const cfConnectingIp = req.headers.get("cf-connecting-ip");
   if (cfConnectingIp) return cfConnectingIp.trim();
 
