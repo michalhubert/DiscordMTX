@@ -18,7 +18,9 @@ export const proxy = auth((req) => {
   const isLoggedIn = !!req.auth?.user
   const isLoginPage = pathname.startsWith('/login')
   const isAuthApi = pathname.startsWith('/api/auth')
-  const isDockArea = DOCK_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+  const isDockArea = DOCK_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(prefix + '/'),
+  )
   const dockAuthDisabled = process.env.DISABLE_DOCK_AUTH === 'true'
 
   const redirectToLogin = (streamer: boolean) => {

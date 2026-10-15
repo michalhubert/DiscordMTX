@@ -1,7 +1,6 @@
 import { isStreamerAuthorized } from '@/lib/authz'
 import { getViewerPassword, rotateViewerPassword } from '@/lib/db'
 import { getViewerIdentity } from '@/lib/viewerIdentities'
-import { kickViewerIp } from '@/lib/kickedViewers'
 import { listWebrtcSessions, kickWebrtcSession } from '@/lib/mediamtx'
 import { clearApprovedPasswordViewers, usesPasswordOf } from '@/lib/accessRequests'
 import { NextRequest } from 'next/server'
@@ -34,7 +33,6 @@ export async function POST(req: NextRequest) {
     const identity = getViewerIdentity(item.id)
     if (identity?.role !== 'viewer' || !identity.path) continue
     if (!usesPasswordOf(identity.path, path)) continue
-    if (identity.ip) kickViewerIp(identity.path, identity.ip, identity.role)
     await kickWebrtcSession(item.id)
   }
 

@@ -57,7 +57,7 @@ export async function listWebrtcSessions(): Promise<WebrtcSessionItem[]> {
 
 // Ends a WebRTC session on MediaMTX. This alone only closes the current
 // RTCPeerConnection - callers that want the viewer to actually stay out
-// must also ban them via lib/kickedViewers so the WHEP endpoint refuses
+// must also ban them via lib/accessBlocks so the WHEP endpoint refuses
 // their immediate reconnect attempt.
 export async function kickWebrtcSession(id: string): Promise<boolean> {
   try {

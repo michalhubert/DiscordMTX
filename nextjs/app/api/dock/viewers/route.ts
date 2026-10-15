@@ -3,7 +3,7 @@ import {
   getViewerIdentity,
   pruneViewerIdentities,
 } from '@/lib/viewerIdentities'
-import { kickViewerIp } from '@/lib/kickedViewers'
+import { kickViewer } from '@/lib/accessBlocks'
 import { fetchWebrtcSessions, kickWebrtcSession } from '@/lib/mediamtx'
 import { revokeApproval } from '@/lib/accessRequests'
 import { disconnectWatchViewer } from '@/lib/watchRoom'
@@ -57,12 +57,12 @@ export async function DELETE(req: NextRequest) {
     return new Response('Missing session ID', { status: 400 })
   }
 
-  // Ban this viewer's IP on their path for a short cooldown so, once MediaMTX
-  // drops the connection below, the player's auto-reconnect loop can't just
-  // open a fresh WHEP session and undo the kick.
+  // Block this viewer on their path for a short cooldown so, once MediaMTX drops
+  // the connection below, the player's auto-reconnect loop can't just open a
+  // fresh WHEP session and undo the kick.
   const identity = getViewerIdentity(sessionId)
   if (identity?.ip && identity.path) {
-    kickViewerIp(identity.path, identity.ip, identity.role)
+    kickViewer(identity.path, identity)
     revokeApproval(identity.path, identity.ip, identity.role)
     disconnectWatchViewer(identity.path, identity.ip, identity.role)
   }

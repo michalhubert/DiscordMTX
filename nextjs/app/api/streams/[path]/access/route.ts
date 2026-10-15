@@ -1,15 +1,15 @@
 import { auth } from '@/lib/auth'
 import { getPathVisibility } from '@/lib/db'
-import { requestAccess, getDenialInfo } from '@/lib/accessRequests'
+import { requestAccess } from '@/lib/accessRequests'
 import { syncStreamState } from '@/lib/streamState'
 import { getClientIp } from '@/lib/net'
-import { getKickInfo } from '@/lib/kickedViewers'
+import { blockedViewerOf, getBlock } from '@/lib/accessBlocks'
 import { listPaths } from '@/lib/mediamtx'
 import { isViewerPasswordStale, type SessionUser } from '@/lib/authz'
 import { NextRequest } from 'next/server'
 
-// Polled by viewers of a private stream while they wait in the pending queue
-// (see JoinGate.tsx). Public streams and the streamer themself are always "approved".
+// Polled by the login page while a signed-in viewer waits to get into a stream
+// (see StreamGate.tsx). Public streams and the streamer are always "approved".
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ path: string }> },
@@ -26,6 +26,14 @@ export async function GET(
     return Response.json({ status: 'unauthorized' }, { status: 401 })
   }
 
+  const ip = getClientIp(req)
+  const viewer = blockedViewerOf(user, ip)
+
+  const block = user.role !== 'streamer' && getBlock(path, viewer)
+  if (block) {
+    return Response.json({ status: 'blocked', ...block })
+  }
+
   const paths = await listPaths()
   if (paths) {
     const pathInfo = paths.find((p) => p.name === path) ?? null
@@ -35,15 +43,6 @@ export async function GET(
     }
   } else {
     console.error('Failed to check path status')
-  }
-
-  const ip = getClientIp(req)
-
-  if (user.role !== 'streamer') {
-    const kickInfo = getKickInfo(path, ip, user.role)
-    if (kickInfo) {
-      return Response.json({ status: 'kicked', kickedUntil: kickInfo.kickedUntil })
-    }
   }
 
   if (user.role === 'streamer' || getPathVisibility(path) !== 'private') {
@@ -56,12 +55,8 @@ export async function GET(
     user.role === 'discord' ? user.name : null,
     user.role === 'discord' ? user.image : null,
     user.role,
+    viewer.discordId,
   )
-
-  if (status === 'denied') {
-    const denialInfo = getDenialInfo(path, ip)
-    return Response.json({ status: 'denied', denialInfo })
-  }
 
   return Response.json({ status })
 }

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
+import { loginUrlFor } from '@/lib/loginUrl'
 import { waitForIceGathering } from '@/lib/webrtc'
 
 export type PlayerStatus =
-  'connecting' | 'connected' | 'offline' | 'error' | 'kicked'
+  'connecting' | 'connected' | 'offline' | 'error'
 
 interface UseWhepPlayerOptions {
   whepUrl: string
@@ -95,25 +96,9 @@ export function useWhepPlayer({
             window.location.href = '/login'
             return
           } else if (res.status === 403) {
-            const data = await res.json().catch(() => null)
-
-            if (
-              data?.error === 'kicked' &&
-              typeof data.kickedUntil === 'number'
-            ) {
-              // Kicked - wait out the real cooldown instead of retrying every RECONNECT_DELAY_MS
-              setStatus('kicked')
-              pc.close()
-              scheduleReconnect(Math.max(data.kickedUntil - Date.now(), 1000))
-              return
-            }
-
-            if (data?.error === 'not-approved') {
-              // Access revoked or waiting room needed -> reload so JoinGate handles it
-              window.location.reload()
-              return
-            }
-            setStatus('error')
+            // Blocked, or not (or no longer) approved: wait on the login page
+            window.location.href = loginUrlFor(window.location.pathname.slice(1))
+            return
           } else {
             setStatus('error')
           }

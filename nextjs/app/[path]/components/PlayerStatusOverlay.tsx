@@ -13,7 +13,6 @@ const statusLabels: Record<PlayerStatus, string> = {
   connected: 'Live',
   offline: 'Stream offline',
   error: 'Connection error',
-  kicked: 'Removed by the streamer',
 }
 
 export default function PlayerStatusOverlay({ status }: Props) {
@@ -43,7 +42,7 @@ function StatusIcon({ status }: { status: PlayerStatus }) {
   if (status === 'connecting') {
     return <CircularProgress size={36} />
   }
-  if (status === 'offline' || status === 'kicked') {
+  if (status === 'offline') {
     return <WifiOff size={40} />
   }
   return <AlertTriangle size={40} />

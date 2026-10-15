@@ -1,9 +1,14 @@
 import { auth } from '@/lib/auth'
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getPathVisibility } from '@/lib/db'
 import { isViewerPasswordStale, type SessionUser } from '@/lib/authz'
+import { isApproved } from '@/lib/accessRequests'
+import { getBlock, blockedViewerOf } from '@/lib/accessBlocks'
+import { loginUrlFor } from '@/lib/loginUrl'
+import { getClientIp } from '@/lib/net'
 import Box from '@mui/material/Box'
-import JoinGate from './JoinGate'
+import PlayerClient from './PlayerClient'
 
 export default async function StreamPage({
   params,
@@ -22,21 +27,21 @@ export default async function StreamPage({
   if (isViewerPasswordStale(user, path)) {
     redirect('/login')
   }
-  const whepUrl = `/api/whep/${path}`
-  const isPrivate = getPathVisibility(path) === 'private'
-  const role = user.role
+
+  if (user.role !== 'streamer') {
+    const ip = getClientIp({ headers: await headers() })
+    const mustWait =
+      getBlock(path, blockedViewerOf(user, ip)) ||
+      (getPathVisibility(path) === 'private' && !isApproved(path, ip, user.role))
+    if (mustWait) redirect(loginUrlFor(path))
+  }
 
   return (
     <Box
       component="main"
       sx={{ height: '100vh', width: '100vw', bgcolor: 'common.black', overflow: 'hidden' }}
     >
-      <JoinGate
-        path={path}
-        whepUrl={whepUrl}
-        isPrivate={isPrivate}
-        bypass={role === 'streamer'}
-      />
+      <PlayerClient path={path} whepUrl={`/api/whep/${path}`} />
     </Box>
   )
 }

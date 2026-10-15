@@ -66,14 +66,37 @@ function getDb(): Database.Database {
       resource_id TEXT
     );
   `);
+  db.exec("DROP TABLE IF EXISTS denial_records");
   db.exec(`
-    CREATE TABLE IF NOT EXISTS denial_records (
-      stream_session_id INTEGER NOT NULL,
+    CREATE TABLE IF NOT EXISTS access_blocks (
+      path TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      denial_count INTEGER NOT NULL DEFAULT 0,
+      blocked_until INTEGER NOT NULL,
+      PRIMARY KEY (path, subject)
+    );
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS access_requests (
+      path TEXT NOT NULL,
       ip TEXT NOT NULL,
-      denial_count INTEGER NOT NULL DEFAULT 1,
-      denied_until INTEGER NOT NULL,
-      PRIMARY KEY (stream_session_id, ip),
-      FOREIGN KEY (stream_session_id) REFERENCES stream_sessions(id) ON DELETE CASCADE
+      role TEXT NOT NULL,
+      name TEXT,
+      image TEXT,
+      discord_id TEXT,
+      requested_at INTEGER NOT NULL,
+      last_seen_at INTEGER NOT NULL,
+      PRIMARY KEY (path, ip, role)
+    );
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS approved_viewers (
+      path TEXT NOT NULL,
+      ip TEXT NOT NULL,
+      role TEXT NOT NULL,
+      approved_at INTEGER NOT NULL,
+      PRIMARY KEY (path, ip, role)
     );
   `);
   db.exec(`
@@ -208,11 +231,12 @@ export function rotateViewerPassword(path: string): string {
   return newPassword;
 }
 
-export type DenialRecord = {
-  stream_session_id: number;
-  ip: string;
+export type AccessBlockRow = {
+  path: string;
+  subject: string;
+  reason: "kicked" | "denied";
   denial_count: number;
-  denied_until: number;
+  blocked_until: number;
 };
 
 export type StreamSession = {
@@ -236,7 +260,7 @@ export function getStreamSessionByPath(path: string): StreamSession | null {
 
 export function createStreamSession(path: string, resourceId: string | null = null): StreamSession {
   const now = Date.now();
-  // Force-finish any stale session for this path (deletes cascade to denial_records) before inserting the new one.
+  // Force-finish any stale session for this path before inserting the new one.
   const db = getDb();
   const run = db.transaction(() => {
     db.prepare("DELETE FROM stream_sessions WHERE path = ?").run(path);
@@ -255,38 +279,145 @@ export function deleteStreamSession(path: string): void {
     .run(path);
 }
 
-export function getDenialRecord(streamSessionId: number, ip: string): DenialRecord | null {
+export function getAccessBlock(path: string, subject: string): AccessBlockRow | null {
   try {
     const row = getDb()
-      .prepare("SELECT stream_session_id, ip, denial_count, denied_until FROM denial_records WHERE stream_session_id = ? AND ip = ?")
-      .get(streamSessionId, ip) as DenialRecord | undefined;
+      .prepare("SELECT path, subject, reason, denial_count, blocked_until FROM access_blocks WHERE path = ? AND subject = ?")
+      .get(path, subject) as AccessBlockRow | undefined;
     return row ?? null;
   } catch (err) {
-    console.error("Failed to read denial record:", err);
+    console.error("Failed to read access block:", err);
     return null;
   }
 }
 
-export function setDenialRecord(streamSessionId: number, ip: string, denialCount: number, deniedUntil: number): void {
+export function setAccessBlock(row: AccessBlockRow): void {
   getDb()
     .prepare(
-      `INSERT INTO denial_records (stream_session_id, ip, denial_count, denied_until) VALUES (?, ?, ?, ?)
-       ON CONFLICT(stream_session_id, ip) DO UPDATE SET denial_count = excluded.denial_count, denied_until = excluded.denied_until`
+      `INSERT INTO access_blocks (path, subject, reason, denial_count, blocked_until)
+       VALUES (@path, @subject, @reason, @denial_count, @blocked_until)
+       ON CONFLICT(path, subject) DO UPDATE SET
+         reason = excluded.reason,
+         denial_count = excluded.denial_count,
+         blocked_until = excluded.blocked_until`
     )
-    .run(streamSessionId, ip, denialCount, deniedUntil);
+    .run(row);
 }
 
-export function deleteDenialRecord(streamSessionId: number, ip: string): void {
+export function deleteAccessBlock(path: string, subject: string): void {
   getDb()
-    .prepare("DELETE FROM denial_records WHERE stream_session_id = ? AND ip = ?")
-    .run(streamSessionId, ip);
+    .prepare("DELETE FROM access_blocks WHERE path = ? AND subject = ?")
+    .run(path, subject);
 }
 
-export function pruneExpiredDenialRecords(): void {
-  const now = Date.now();
+export function pruneAccessBlocks(endedBefore: number): void {
   getDb()
-    .prepare("DELETE FROM denial_records WHERE denied_until < ?")
-    .run(now);
+    .prepare("DELETE FROM access_blocks WHERE blocked_until < ?")
+    .run(endedBefore);
+}
+
+export type AccessRequestRow = {
+  path: string;
+  ip: string;
+  role: string;
+  name: string | null;
+  image: string | null;
+  discord_id: string | null;
+  requested_at: number;
+  last_seen_at: number;
+};
+
+export function touchAccessRequest(
+  row: Omit<AccessRequestRow, "requested_at" | "last_seen_at">,
+  now: number
+): void {
+  getDb()
+    .prepare(
+      `INSERT INTO access_requests (path, ip, role, name, image, discord_id, requested_at, last_seen_at)
+       VALUES (@path, @ip, @role, @name, @image, @discord_id, @now, @now)
+       ON CONFLICT(path, ip, role) DO UPDATE SET
+         name = excluded.name,
+         image = excluded.image,
+         discord_id = excluded.discord_id,
+         last_seen_at = excluded.last_seen_at`
+    )
+    .run({ ...row, now });
+}
+
+export function getAccessRequest(path: string, ip: string, role: string): AccessRequestRow | null {
+  try {
+    const row = getDb()
+      .prepare("SELECT * FROM access_requests WHERE path = ? AND ip = ? AND role = ?")
+      .get(path, ip, role) as AccessRequestRow | undefined;
+    return row ?? null;
+  } catch (err) {
+    console.error("Failed to read access request:", err);
+    return null;
+  }
+}
+
+export function listAccessRequests(seenSince: number): AccessRequestRow[] {
+  try {
+    const db = getDb();
+    db.prepare("DELETE FROM access_requests WHERE last_seen_at < ?").run(seenSince);
+    return db
+      .prepare("SELECT * FROM access_requests ORDER BY requested_at")
+      .all() as AccessRequestRow[];
+  } catch (err) {
+    console.error("Failed to list access requests:", err);
+    return [];
+  }
+}
+
+export function deleteAccessRequest(path: string, ip: string, role: string): void {
+  getDb()
+    .prepare("DELETE FROM access_requests WHERE path = ? AND ip = ? AND role = ?")
+    .run(path, ip, role);
+}
+
+export function deleteAccessRequestsForPath(path: string): void {
+  getDb().prepare("DELETE FROM access_requests WHERE path = ?").run(path);
+}
+
+export type ApprovedViewerRow = { path: string; ip: string; role: string };
+
+export function isViewerApproved(path: string, ip: string, role: string): boolean {
+  try {
+    return !!getDb()
+      .prepare("SELECT 1 FROM approved_viewers WHERE path = ? AND ip = ? AND role = ?")
+      .get(path, ip, role);
+  } catch (err) {
+    console.error("Failed to read approval:", err);
+    return false;
+  }
+}
+
+export function approveViewer(path: string, ip: string, role: string): void {
+  getDb()
+    .prepare(
+      `INSERT INTO approved_viewers (path, ip, role, approved_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(path, ip, role) DO UPDATE SET approved_at = excluded.approved_at`
+    )
+    .run(path, ip, role, Date.now());
+}
+
+export function listApprovedViewers(): ApprovedViewerRow[] {
+  try {
+    return getDb().prepare("SELECT path, ip, role FROM approved_viewers").all() as ApprovedViewerRow[];
+  } catch (err) {
+    console.error("Failed to list approvals:", err);
+    return [];
+  }
+}
+
+export function deleteApproval(path: string, ip: string, role: string): void {
+  getDb()
+    .prepare("DELETE FROM approved_viewers WHERE path = ? AND ip = ? AND role = ?")
+    .run(path, ip, role);
+}
+
+export function deleteApprovalsForPath(path: string): void {
+  getDb().prepare("DELETE FROM approved_viewers WHERE path = ?").run(path);
 }
 
 export function getDiscordWebhookMessageId(path: string): string | null {

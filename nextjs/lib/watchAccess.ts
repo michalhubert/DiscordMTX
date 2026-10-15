@@ -3,7 +3,7 @@ import { auth } from "./auth";
 import { getClientIp } from "./net";
 import { getPathVisibility } from "./db";
 import { isApproved } from "./accessRequests";
-import { getKickInfo } from "./kickedViewers";
+import { getBlock, blockedViewerOf } from "./accessBlocks";
 import { isViewerPasswordStale, type SessionUser } from "./authz";
 import { ponyKeyFor } from "./guestIdentity";
 
@@ -11,7 +11,7 @@ import { ponyKeyFor } from "./guestIdentity";
 export function watchAccessDenied(user: SessionUser, path: string, ip: string): number | null {
   if (isViewerPasswordStale(user, path)) return 401;
   if (user.role === "streamer") return null;
-  if (getKickInfo(path, ip, user.role)) return 403;
+  if (getBlock(path, blockedViewerOf(user, ip))) return 403;
   if (getPathVisibility(path) === "private" && !isApproved(path, ip, user.role)) {
     return 403;
   }

@@ -1,7 +1,6 @@
 import { auth } from '@/lib/auth'
 import { rememberViewerIdentity } from '@/lib/viewerIdentities'
 import { getClientIp } from '@/lib/net'
-import { getKickInfo } from '@/lib/kickedViewers'
 import { type SessionUser } from '@/lib/authz'
 import { watchAccessDenied } from '@/lib/watchAccess'
 import { forwardSdpHeaders, mediamtxWebrtcBase } from '@/lib/mediamtx'
@@ -25,14 +24,7 @@ export async function POST(
     return new Response('Viewer password changed', { status: 401 })
   }
   if (denied === 403) {
-    const kickInfo = getKickInfo(path, ip, user.role)
-    if (kickInfo) {
-      return Response.json(
-        { error: 'kicked', kickedUntil: kickInfo.kickedUntil },
-        { status: 403 },
-      )
-    }
-    return Response.json({ error: 'not-approved' }, { status: 403 })
+    return new Response('Forbidden', { status: 403 })
   }
 
   const upstream = `${mediamtxWebrtcBase()}/${path}/whep`
@@ -61,6 +53,7 @@ export async function POST(
       image: user.role === 'discord' ? user.image : null,
       role: user.role,
       ip,
+      discordId: user.role === 'discord' ? user.id : null,
       path,
     })
   }

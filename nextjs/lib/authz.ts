@@ -16,8 +16,8 @@ export async function isStreamerAuthorized(): Promise<boolean> {
 }
 
 export type SessionUser =
-  | { name: string; image: string | null; role: "discord" }
-  | { name: null; image: null; role: "viewer" | "streamer"; password?: string };
+  | { id: string; name: string; image: string | null; role: "discord" }
+  | { id?: string; name: null; image: null; role: "viewer" | "streamer"; password?: string };
 
 // True once the streamer rotates the viewer password: the session still carries the
 // old password, so the viewer must be sent back to /login instead of being treated
