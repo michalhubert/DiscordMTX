@@ -281,7 +281,7 @@ export default function MobileEdgePanel({
               flexDirection: 'column',
               gap: 1,
               borderRadius: '16px 0 0 16px',
-              borderColor: 'rgba(255, 255, 255, 0.08)',
+              borderColor: accentAlpha(0.35),
               bgcolor: 'rgba(0, 0, 0, 0.75)',
               p: 1,
               backdropFilter: 'blur(40px)',

@@ -9,7 +9,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { Dices, Pin, Tag, Users, X } from 'lucide-react'
 import type { WatchGuest, WatchViewer } from '@/lib/watchRoomShared'
 import AvatarPreview from '@/app/components/AvatarPreview'
-import { glassSx } from '@/lib/theme'
+import { accentAlpha, accentGlassSx } from '@/lib/theme'
 import type { PonyChangeResult } from '../hooks/useWatchRoom'
 import FavoriteTagForm from './FavoriteTagForm'
 import ViewerAvatar from './ViewerAvatar'
@@ -65,7 +65,7 @@ function RowButton({
         color: active ? activeColor : 'rgba(255,255,255,0.35)',
         '& svg': { fill: active ? 'currentColor' : 'none' },
         '&:hover': {
-          bgcolor: 'rgba(255,255,255,0.1)',
+          bgcolor: accentAlpha(0.2),
           color: active ? activeColor : 'common.white',
         },
         '&.Mui-disabled': { color: 'rgba(255,255,255,0.35)' },
@@ -100,9 +100,16 @@ export default function ViewersOverlay({
       exit={{ opacity: 0, x: -12 }}
       transition={{ duration: 0.18 }}
       onClick={(e) => e.stopPropagation()}
-      style={{ pointerEvents: 'auto', width: 224, maxWidth: '100%', flexShrink: 0 }}
+      style={{
+        pointerEvents: 'auto',
+        width: 'max-content',
+        maxWidth: '100%',
+        flexShrink: 0,
+        borderRadius: 8,
+        padding: 8,
+      }}
     >
-      <Box sx={[glassSx, { borderRadius: 3, p: 1 }]}>
+      <Box sx={[accentGlassSx, { borderRadius: 1, p: 1 }]}>
         <Box
           sx={{
             display: 'flex',
@@ -129,7 +136,7 @@ export default function ViewersOverlay({
               p: 0.5,
               borderRadius: 1,
               color: 'rgba(255,255,255,0.5)',
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.1)', color: 'common.white' },
+              '&:hover': { bgcolor: accentAlpha(0.2), color: 'common.white' },
             }}
           >
             <X size={14} />
@@ -138,7 +145,14 @@ export default function ViewersOverlay({
 
         <Box
           component="ul"
-          sx={{ m: 0, p: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '2px' }}
+          sx={{
+            m: 0,
+            p: 0,
+            listStyle: 'none',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '2px',
+          }}
         >
           <AnimatePresence initial={false}>
             {listed.map((viewer) => (
@@ -160,6 +174,8 @@ export default function ViewersOverlay({
                     py: 0.5,
                     borderRadius: 1.5,
                     fontSize: 14,
+                    bgcolor:
+                      viewer.id === selfId ? accentAlpha(0.18) : undefined,
                   }}
                 >
                   <AvatarPreview
@@ -177,13 +193,26 @@ export default function ViewersOverlay({
                     <ViewerAvatar viewer={viewer} />
                     <Box
                       component="span"
-                      sx={{ display: 'flex', flex: 1, minWidth: 0, alignItems: 'baseline', gap: 0.5 }}
+                      sx={{
+                        display: 'flex',
+                        flex: 1,
+                        minWidth: 0,
+                        alignItems: 'baseline',
+                        gap: 0.5,
+                      }}
                     >
-                      <Typography component="span" noWrap sx={{ fontSize: 'inherit' }}>
+                      <Typography
+                        component="span"
+                        noWrap
+                        sx={{ fontSize: 'inherit' }}
+                      >
                         {viewer.name}
                       </Typography>
                       {viewer.id === selfId && (
-                        <Box component="span" sx={{ flexShrink: 0, color: 'rgba(255,255,255,0.4)' }}>
+                        <Box
+                          component="span"
+                          sx={{ flexShrink: 0, color: 'rgba(255,255,255,0.4)' }}
+                        >
                           (you)
                         </Box>
                       )}
@@ -210,7 +239,11 @@ export default function ViewersOverlay({
                         ) : cooldownS > 0 ? (
                           <Box
                             component="span"
-                            sx={{ fontSize: 10, lineHeight: '14px', fontVariantNumeric: 'tabular-nums' }}
+                            sx={{
+                              fontSize: 10,
+                              lineHeight: '14px',
+                              fontVariantNumeric: 'tabular-nums',
+                            }}
                           >
                             {cooldownS}
                           </Box>
@@ -275,7 +308,14 @@ export default function ViewersOverlay({
         </Box>
 
         {hidden > 0 && (
-          <Typography sx={{ px: 0.5, pt: 0.5, fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
+          <Typography
+            sx={{
+              px: 0.5,
+              pt: 0.5,
+              fontSize: 12,
+              color: 'rgba(255,255,255,0.5)',
+            }}
+          >
             +{hidden} more
           </Typography>
         )}

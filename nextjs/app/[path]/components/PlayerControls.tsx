@@ -12,6 +12,7 @@ import {
   VolumeX,
 } from 'lucide-react'
 import AccentPicker from '@/app/components/AccentPicker'
+import { accentAlpha } from '@/lib/theme'
 import type { Reaction } from '@/lib/watchRoomShared'
 import type {
   ConnectionQuality,
@@ -55,13 +56,13 @@ const controlButtonSx = {
   color: 'rgba(255,255,255,0.9)',
   transition: 'background-color 150ms, transform 150ms',
   '&:hover, &.Mui-focusVisible': {
-    bgcolor: 'rgba(255,255,255,0.1)',
+    bgcolor: accentAlpha(0.2),
     color: 'common.white',
   },
   '&:active': { transform: 'scale(0.95)' },
   '&[aria-pressed="true"]': {
-    bgcolor: 'rgba(255,255,255,0.15)',
-    color: 'common.white',
+    bgcolor: accentAlpha(0.3),
+    color: 'primary.light',
   },
 }
 
@@ -203,9 +204,9 @@ export default function PlayerControls({
         <Box
           sx={{
             borderRadius: 6,
-            bgcolor: 'rgba(255,255,255,0.08)',
+            bgcolor: accentAlpha(0.12),
             p: 0.5,
-            boxShadow: '0 0 0 1px rgba(255,255,255,0.1), 0 8px 24px rgba(0,0,0,0.3)',
+            boxShadow: `0 0 0 1px ${accentAlpha(0.35)}, 0 8px 24px rgba(0,0,0,0.3)`,
             backdropFilter: 'blur(12px)',
           }}
         >
@@ -253,13 +254,13 @@ export default function PlayerControls({
                   mx: 1.5,
                   width: 72,
                   flexShrink: 0,
-                  color: 'common.white',
+                  color: 'primary.main',
                   '& .MuiSlider-rail': { opacity: 0.25 },
                   '& .MuiSlider-thumb': {
                     width: 12,
                     height: 12,
                     '&:hover, &.Mui-focusVisible': {
-                      boxShadow: '0 0 0 6px rgba(255,255,255,0.16)',
+                      boxShadow: `0 0 0 6px ${accentAlpha(0.25)}`,
                     },
                   },
                 }}

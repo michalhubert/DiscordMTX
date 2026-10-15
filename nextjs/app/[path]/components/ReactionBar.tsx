@@ -1,6 +1,7 @@
 import Box from '@mui/material/Box'
 import ButtonBase from '@mui/material/ButtonBase'
 import type { SxProps, Theme } from '@mui/material/styles'
+import { accentAlpha } from '@/lib/theme'
 import { REACTIONS, type Reaction } from '@/lib/watchRoomShared'
 import ControlTooltip from './ControlTooltip'
 
@@ -40,7 +41,7 @@ export default function ReactionBar({
               touchAction: 'manipulation',
               transition: 'transform 150ms, background-color 150ms',
               '&:hover, &.Mui-focusVisible': {
-                bgcolor: 'rgba(255,255,255,0.1)',
+                bgcolor: accentAlpha(0.25),
               },
               '&:hover': { transform: 'translateY(-2px) scale(1.1)' },
               '&:active': { transform: 'scale(0.9)' },

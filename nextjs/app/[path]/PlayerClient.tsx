@@ -6,7 +6,7 @@ import IconButton from '@mui/material/IconButton'
 import { AnimatePresence, motion } from 'motion/react'
 import { VolumeX, X } from 'lucide-react'
 import { useAvatarAccentDetection } from '@/lib/avatarAccent'
-import { glassSx } from '@/lib/theme'
+import { accentAlpha, accentGlassSx, glassSx } from '@/lib/theme'
 import {
   REACTIONS,
   type Reaction,
@@ -285,7 +285,7 @@ export default function PlayerClient({ path, whepUrl }: Props) {
             display: { xs: 'flex', sm: 'grid' },
             flexDirection: 'column',
             gap: 1,
-            gridTemplateColumns: '1fr auto 1fr',
+            gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1fr)',
             alignItems: { sm: 'start' },
           }}
         >
@@ -371,13 +371,12 @@ export default function PlayerClient({ path, whepUrl }: Props) {
           >
             <Box
               sx={[
-                glassSx,
+                accentGlassSx,
                 {
                   display: 'flex',
                   alignItems: 'center',
                   gap: 0.5,
                   borderRadius: 4,
-                  bgcolor: 'rgba(0, 0, 0, 0.7)',
                   p: 0.75,
                 },
               ]}
@@ -400,7 +399,7 @@ export default function PlayerClient({ path, whepUrl }: Props) {
                   width: 36,
                   borderRadius: 3,
                   color: 'rgba(255, 255, 255, 0.6)',
-                  '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.1)', color: 'common.white' },
+                  '&:hover': { bgcolor: accentAlpha(0.2), color: 'common.white' },
                 }}
               >
                 <X size={20} />

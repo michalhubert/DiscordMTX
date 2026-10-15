@@ -36,6 +36,13 @@ export const glassSx = {
   color: 'common.white',
 } satisfies SxProps<Theme>
 
+export const accentGlassSx = {
+  ...glassSx,
+  background: `linear-gradient(${accentAlpha(0.16)}, ${accentAlpha(0.06)}), rgba(0, 0, 0, 0.6)`,
+  border: `1px solid ${accentAlpha(0.35)}`,
+  boxShadow: `0 12px 32px rgba(0, 0, 0, 0.45), 0 0 24px ${accentAlpha(0.12)}`,
+} satisfies SxProps<Theme>
+
 export const popupSx = {
   bgcolor: 'rgba(23, 23, 28, 0.96)',
   border: '1px solid rgba(255, 255, 255, 0.1)',
