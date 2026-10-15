@@ -1,6 +1,7 @@
 import { isStreamerAuthorized } from '@/lib/authz'
 import { getAllPathVisibilities, setPathVisibility } from '@/lib/db'
 import { clearApprovedViewers, clearPendingRequests } from '@/lib/accessRequests'
+import { clearDenials } from '@/lib/accessBlocks'
 import { getViewerIdentity } from '@/lib/viewerIdentities'
 import { listWebrtcSessions, kickWebrtcSession } from '@/lib/mediamtx'
 import { disconnectAllWatchViewers } from '@/lib/watchRoom'
@@ -44,6 +45,7 @@ export async function POST(req: NextRequest) {
     clearApprovedViewers(path)
   } else {
     clearPendingRequests(path)
+    clearDenials(path)
   }
 
   const sessions = await listWebrtcSessions()

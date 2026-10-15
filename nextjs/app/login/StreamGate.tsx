@@ -31,6 +31,7 @@ function formatTimeRemaining(ms: number): string {
 export default function StreamGate({ path }: { path: string }) {
   const [gate, setGate] = useState<Gate>({ status: 'checking' })
   const [now, setNow] = useState(() => Date.now())
+  const isBlocked = gate.status === 'blocked'
 
   usePolling(
     async (isCancelled) => {
@@ -47,6 +48,7 @@ export default function StreamGate({ path }: { path: string }) {
         if (data.status === 'approved') {
           window.location.href = `/${path}`
         } else if (data.status === 'blocked') {
+          setNow(Date.now())
           setGate({ status: 'blocked', reason: data.reason, blockedUntil: data.blockedUntil })
         } else {
           setGate({ status: data.status === 'offline' ? 'offline' : 'pending' })
@@ -55,11 +57,9 @@ export default function StreamGate({ path }: { path: string }) {
         console.error('Failed to check stream access:', err)
       }
     },
-    3000,
+    isBlocked ? 1000 : 3000,
     [path],
   )
-
-  const isBlocked = gate.status === 'blocked'
   useEffect(() => {
     if (!isBlocked) return
     const interval = setInterval(() => setNow(Date.now()), 1000)

@@ -10,6 +10,7 @@ const DOCK_PREFIXES = [
   '/api/mediamtx',
   '/api/dock',
   '/api/stream',
+  '/api/streams/hook',
   '/api/whip',
 ]
 

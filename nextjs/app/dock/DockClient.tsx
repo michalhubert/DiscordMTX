@@ -148,7 +148,7 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
   const audioCtxRef = useRef<AudioContext | null>(null)
   const prevStatusRef = useRef<HudStatus>('checking')
 
-  function playNotes(freqs: number[], stepS: number, durS: number, peak: number) {
+  function withAudio(play: (ctx: AudioContext, now: number) => void) {
     if (!soundEnabledRef.current) return
     try {
       if (!audioCtxRef.current) {
@@ -160,37 +160,55 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
       }
       const audioCtx = audioCtxRef.current
       if (audioCtx.state === 'suspended') audioCtx.resume()
-
-      const now = audioCtx.currentTime
-      freqs.forEach((freq, i) => {
-        const start = now + i * stepS
-        const osc = audioCtx.createOscillator()
-        const gain = audioCtx.createGain()
-
-        osc.type = 'sine'
-        osc.frequency.setValueAtTime(freq, start)
-
-        gain.gain.setValueAtTime(0, start)
-        gain.gain.linearRampToValueAtTime(peak, start + 0.015)
-        gain.gain.exponentialRampToValueAtTime(0.001, start + durS)
-
-        osc.connect(gain)
-        gain.connect(audioCtx.destination)
-
-        osc.start(start)
-        osc.stop(start + durS)
-      })
+      play(audioCtx, audioCtx.currentTime)
     } catch (e) {
       console.error('Audio playback error:', e)
     }
   }
 
   function playChime(isJoin = true) {
-    playNotes(isJoin ? [587.33, 880] : [880, 587.33], 0.1, 0.25, 0.12)
+    withAudio((ctx, now) => {
+      const [first, second] = isJoin ? [587.33, 880] : [880, 587.33]
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(first, now)
+      osc.frequency.setValueAtTime(second, now + 0.1)
+
+      gain.gain.setValueAtTime(0.12, now)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35)
+
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+
+      osc.start(now)
+      osc.stop(now + 0.35)
+    })
   }
 
   function playStreamTone(isStart = true) {
-    playNotes(isStart ? [523.25, 783.99] : [783.99, 523.25], 0.09, 0.18, 0.14)
+    withAudio((ctx, now) => {
+      const notes = isStart ? [523.25, 783.99] : [783.99, 523.25]
+      notes.forEach((freq, i) => {
+        const start = now + i * 0.09
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+
+        osc.type = 'sine'
+        osc.frequency.setValueAtTime(freq, start)
+
+        gain.gain.setValueAtTime(0, start)
+        gain.gain.linearRampToValueAtTime(0.14, start + 0.015)
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.18)
+
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+
+        osc.start(start)
+        osc.stop(start + 0.18)
+      })
+    })
   }
 
   function logEvent(type: 'join' | 'leave', text: string, viewer: string) {

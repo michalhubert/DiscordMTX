@@ -1,6 +1,7 @@
 // Kicks and denials. Discord viewers are blocked by account, everyone else by IP.
 import {
   deleteAccessBlock,
+  deleteAccessBlocks,
   getAccessBlock,
   pruneAccessBlocks,
   setAccessBlock,
@@ -54,6 +55,7 @@ export function getBlock(path: string, viewer: BlockedViewer): AccessBlock | nul
 export function kickViewer(path: string, viewer: BlockedViewer): void {
   const subject = subjectOf(viewer);
   if (!subject) return;
+  pruneAccessBlocks(Date.now() - DENIAL_MEMORY_MS);
   setAccessBlock({
     path,
     subject,
@@ -81,4 +83,8 @@ export function denyViewer(path: string, viewer: BlockedViewer): void {
 export function clearBlock(path: string, viewer: BlockedViewer): void {
   const subject = subjectOf(viewer);
   if (subject) deleteAccessBlock(path, subject);
+}
+
+export function clearDenials(path: string): void {
+  deleteAccessBlocks(path, "denied");
 }

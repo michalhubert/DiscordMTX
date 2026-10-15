@@ -310,6 +310,12 @@ export function deleteAccessBlock(path: string, subject: string): void {
     .run(path, subject);
 }
 
+export function deleteAccessBlocks(path: string, reason: AccessBlockRow["reason"]): void {
+  getDb()
+    .prepare("DELETE FROM access_blocks WHERE path = ? AND reason = ?")
+    .run(path, reason);
+}
+
 export function pruneAccessBlocks(endedBefore: number): void {
   getDb()
     .prepare("DELETE FROM access_blocks WHERE blocked_until < ?")

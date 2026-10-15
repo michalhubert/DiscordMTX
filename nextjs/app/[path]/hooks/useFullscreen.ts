@@ -58,18 +58,18 @@ export function useFullscreen(
     try {
       if (container?.requestFullscreen) {
         await container.requestFullscreen()
-      } else if (container?.webkitRequestFullscreen) {
-        await container.webkitRequestFullscreen()
-      } else {
-        await enterVideoFullscreen()
+        setIsFullscreen(true)
         return
       }
-      setIsFullscreen(true)
-    } catch {
-      try {
-        await enterVideoFullscreen()
-      } catch {}
-    }
+      if (container?.webkitRequestFullscreen) {
+        await container.webkitRequestFullscreen()
+        setIsFullscreen(true)
+        return
+      }
+    } catch {}
+    try {
+      await enterVideoFullscreen()
+    } catch {}
   }
 
   useEffect(() => {
