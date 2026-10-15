@@ -9,7 +9,7 @@ async function readAccent(image: string): Promise<string | null> {
   const url = URL.createObjectURL(blob)
   try {
     const palette = await Vibrant.from(url).getPalette()
-    // null for greyscale pictures, which falls back to the default accent.
+    // null for greyscale pictures, which falls back to the custom colour.
     return (palette.Vibrant ?? palette.LightVibrant)?.hex ?? null
   } finally {
     URL.revokeObjectURL(url)
@@ -36,7 +36,7 @@ export function useAvatarAccentDetection(image: string | null | undefined) {
         if (!cancelled) setAvatarAccent(accent)
       })
       .catch(() => {
-        // Unreadable picture: keep the previous accent.
+        if (!cancelled) setAvatarAccent(null)
       })
     return () => {
       cancelled = true
