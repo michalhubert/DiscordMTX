@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import { cookies } from 'next/headers'
 import { Geist } from 'next/font/google'
-import { ACCENT_COOKIE, DEFAULT_ACCENT, isHexColor } from '@/lib/theme'
+import { ACCENT_COOKIES, DEFAULT_ACCENT, isHexColor } from '@/lib/theme'
 import ThemeRegistry from './ThemeRegistry'
 
 const geist = Geist({ subsets: ['latin'], variable: '--font-geist' })
@@ -17,13 +17,20 @@ export default async function RootLayout({
 }: {
   children: ReactNode
 }) {
-  const cookieAccent = (await cookies()).get(ACCENT_COOKIE)?.value
-  const initialAccent = isHexColor(cookieAccent) ? cookieAccent : DEFAULT_ACCENT
+  const cookieStore = await cookies()
+  const cookieAccent = (name: string) => {
+    const value = cookieStore.get(name)?.value
+    return isHexColor(value) ? value : DEFAULT_ACCENT
+  }
+  const initialAccents = {
+    viewer: cookieAccent(ACCENT_COOKIES.viewer),
+    studio: cookieAccent(ACCENT_COOKIES.studio),
+  }
 
   return (
     <html lang="en" className={geist.variable}>
       <body>
-        <ThemeRegistry initialAccent={initialAccent}>{children}</ThemeRegistry>
+        <ThemeRegistry initialAccents={initialAccents}>{children}</ThemeRegistry>
       </body>
     </html>
   )

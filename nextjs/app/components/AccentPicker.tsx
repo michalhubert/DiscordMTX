@@ -9,7 +9,7 @@ import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import { Check, Palette, Pipette, UserRound } from 'lucide-react'
 import { ACCENT_PRESETS, DEFAULT_ACCENT } from '@/lib/theme'
-import { useThemeStore } from '@/lib/themeStore'
+import { followsAvatar, useAccentScope, useThemeStore } from '@/lib/themeStore'
 
 const SWATCH = 28
 
@@ -54,14 +54,12 @@ interface PopoverProps {
 }
 
 export function AccentPickerPopover({ anchorEl, onClose }: PopoverProps) {
-  const {
-    accentMode,
-    customAccent,
-    avatarAccent,
-    setCustomAccent,
-    followAvatarAccent,
-  } = useThemeStore()
-  const isCustom = accentMode === 'custom'
+  const store = useThemeStore()
+  const { avatarAccent, avatarAccentAvailable, followAvatarAccent } = store
+  const studio = useAccentScope() === 'studio'
+  const customAccent = studio ? store.studioAccent : store.customAccent
+  const setCustomAccent = studio ? store.setStudioAccent : store.setCustomAccent
+  const isCustom = studio || !followsAvatar(store)
   const customIsPreset = ACCENT_PRESETS.includes(customAccent.toLowerCase())
 
   return (
@@ -88,50 +86,50 @@ export function AccentPickerPopover({ anchorEl, onClose }: PopoverProps) {
         Accent colour
       </Typography>
 
-      <ButtonBase
-        onClick={followAvatarAccent}
-        aria-pressed={!isCustom}
-        sx={{
-          mt: 0.5,
-          mb: 1.5,
-          width: '100%',
-          justifyContent: 'flex-start',
-          gap: 1.25,
-          p: 1,
-          borderRadius: 2,
-          border: 1,
-          borderColor: !isCustom ? 'primary.main' : 'divider',
-          bgcolor: !isCustom ? 'action.selected' : 'transparent',
-          textAlign: 'left',
-          '&:hover': { bgcolor: 'action.hover' },
-        }}
-      >
-        <Box
+      {avatarAccentAvailable && (
+        <ButtonBase
+          onClick={followAvatarAccent}
+          aria-pressed={!isCustom}
           sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: SWATCH,
-            height: SWATCH,
-            flexShrink: 0,
-            borderRadius: '50%',
-            bgcolor: avatarAccent ?? DEFAULT_ACCENT,
-            color: '#fff',
+            mt: 0.5,
+            mb: 1.5,
+            width: '100%',
+            justifyContent: 'flex-start',
+            gap: 1.25,
+            p: 1,
+            borderRadius: 2,
+            border: 1,
+            borderColor: !isCustom ? 'primary.main' : 'divider',
+            bgcolor: !isCustom ? 'action.selected' : 'transparent',
+            textAlign: 'left',
+            '&:hover': { bgcolor: 'action.hover' },
           }}
         >
-          <UserRound size={15} />
-        </Box>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-            Match my avatar
-          </Typography>
-          <Typography variant="caption" color="text.secondary" component="p">
-            {avatarAccent
-              ? 'Picked from your picture'
-              : 'Detected when you watch a stream'}
-          </Typography>
-        </Box>
-      </ButtonBase>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: SWATCH,
+              height: SWATCH,
+              flexShrink: 0,
+              borderRadius: '50%',
+              bgcolor: avatarAccent ?? DEFAULT_ACCENT,
+              color: '#fff',
+            }}
+          >
+            <UserRound size={15} />
+          </Box>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              Match my avatar
+            </Typography>
+            <Typography variant="caption" color="text.secondary" component="p">
+              {avatarAccent ? 'Picked from your picture' : 'No colour found in your picture'}
+            </Typography>
+          </Box>
+        </ButtonBase>
+      )}
 
       <Box
         sx={{

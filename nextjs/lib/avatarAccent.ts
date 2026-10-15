@@ -6,6 +6,14 @@ import { useThemeStore } from './themeStore'
 // Discord's and Derpibooru's CDNs allow CORS, so the picture is readable.
 export function useAvatarAccentDetection(image: string | null | undefined) {
   const setAvatarAccent = useThemeStore((s) => s.setAvatarAccent)
+  const setAvailable = useThemeStore((s) => s.setAvatarAccentAvailable)
+  const hasImage = !!image
+
+  useEffect(() => {
+    if (!hasImage) return
+    setAvailable(true)
+    return () => setAvailable(false)
+  }, [hasImage, setAvailable])
 
   useEffect(() => {
     if (!image) return

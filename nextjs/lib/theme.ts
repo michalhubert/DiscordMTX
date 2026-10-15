@@ -1,7 +1,20 @@
 import { createTheme, type SxProps, type Theme } from '@mui/material/styles'
 
 export const DEFAULT_ACCENT = '#ef4444'
-export const ACCENT_COOKIE = 'discordmtx-accent'
+export type AccentScope = 'viewer' | 'studio'
+
+export const ACCENT_COOKIES: Record<AccentScope, string> = {
+  viewer: 'discordmtx-accent',
+  studio: 'discordmtx-studio-accent',
+}
+
+const STUDIO_PATHS = ['/dock', '/stream']
+
+export function accentScopeFor(pathname: string): AccentScope {
+  return STUDIO_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))
+    ? 'studio'
+    : 'viewer'
+}
 
 export const ACCENT_PRESETS = [
   '#ef4444',
