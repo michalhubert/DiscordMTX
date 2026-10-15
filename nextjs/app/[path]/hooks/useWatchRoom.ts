@@ -77,13 +77,37 @@ export function useWatchRoom(
       }
     }
 
+    // Tells the server right away instead of waiting for it to notice the
+    // closed stream, so others' viewer lists update immediately.
+    function leave() {
+      if (retryTimeout) clearTimeout(retryTimeout)
+      source?.close()
+      source = null
+      const connectionId = connectionIdRef.current
+      connectionIdRef.current = null
+      if (!connectionId) return
+      navigator.sendBeacon(
+        `/api/watch/${encodeURIComponent(path)}/leave`,
+        new Blob([JSON.stringify({ connectionId })], {
+          type: 'application/json',
+        }),
+      )
+    }
+
+    // Back/forward cache restores the page without re-running effects.
+    function onPageShow(event: PageTransitionEvent) {
+      if (event.persisted && !cancelled && !source) connect()
+    }
+
     connect()
+    window.addEventListener('pagehide', leave)
+    window.addEventListener('pageshow', onPageShow)
 
     return () => {
       cancelled = true
-      if (retryTimeout) clearTimeout(retryTimeout)
-      source?.close()
-      connectionIdRef.current = null
+      window.removeEventListener('pagehide', leave)
+      window.removeEventListener('pageshow', onPageShow)
+      leave()
     }
   }, [path])
 

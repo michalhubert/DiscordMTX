@@ -117,6 +117,10 @@ export async function refreshWatchGuest(path: string, ponyKey: string): Promise<
   if (changed) broadcastPresence(path);
 }
 
+export function closeWatchConnection(path: string, connectionId: string): void {
+  rooms.get(path)?.get(connectionId)?.close();
+}
+
 export function disconnectWatchViewer(path: string, ip: string, role?: string): void {
   const room = rooms.get(path);
   if (!room) return;
