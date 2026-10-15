@@ -96,7 +96,7 @@ export function useWhepPlayer({
             window.location.href = '/login'
             return
           } else if (res.status === 403) {
-            // Blocked, or not (or no longer) approved: wait on the login page
+            // Blocked or not approved
             window.location.href = loginUrlFor(window.location.pathname.slice(1))
             return
           } else {

@@ -1,6 +1,4 @@
-// Viewers blocked from a stream, either kicked from the dock or denied in the waiting
-// room. Discord viewers are identified by account, everyone else by IP. Blocked
-// viewers stay signed in and wait on the login page until the block ends.
+// Kicks and denials. Discord viewers are blocked by account, everyone else by IP.
 import {
   deleteAccessBlock,
   getAccessBlock,

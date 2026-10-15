@@ -8,8 +8,7 @@ import { listPaths } from '@/lib/mediamtx'
 import { isViewerPasswordStale, type SessionUser } from '@/lib/authz'
 import { NextRequest } from 'next/server'
 
-// Polled by the login page while a signed-in viewer waits to get into a stream
-// (see StreamGate.tsx). Public streams and the streamer are always "approved".
+// Polled by StreamGate while a signed-in viewer waits to get into a stream.
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ path: string }> },

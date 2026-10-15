@@ -23,7 +23,6 @@ export default async function LoginPage({
   const path = streamPathOf(callbackUrl)
   const user = (await auth())?.user as SessionUser | undefined
 
-  // A signed-in viewer sent here from a stream waits for access instead of signing in again.
   if (
     path &&
     mode !== 'streamer' &&

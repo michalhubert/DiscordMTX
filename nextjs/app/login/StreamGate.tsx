@@ -27,8 +27,7 @@ function formatTimeRemaining(ms: number): string {
   return `${Math.ceil(seconds / 60)}m`
 }
 
-// Shown on the login page to a signed-in viewer who can't watch yet: waiting for
-// approval on a private stream, blocked for a while, or the stream is offline.
+// For a signed-in viewer who can't watch yet.
 export default function StreamGate({ path }: { path: string }) {
   const [gate, setGate] = useState<Gate>({ status: 'checking' })
   const [now, setNow] = useState(() => Date.now())

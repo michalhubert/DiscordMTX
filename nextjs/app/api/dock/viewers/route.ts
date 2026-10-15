@@ -57,9 +57,7 @@ export async function DELETE(req: NextRequest) {
     return new Response('Missing session ID', { status: 400 })
   }
 
-  // Block this viewer on their path for a short cooldown so, once MediaMTX drops
-  // the connection below, the player's auto-reconnect loop can't just open a
-  // fresh WHEP session and undo the kick.
+  // Otherwise the player's auto-reconnect would undo the kick.
   const identity = getViewerIdentity(sessionId)
   if (identity?.ip && identity.path) {
     kickViewer(identity.path, identity)
