@@ -27,7 +27,17 @@ export type WatchReaction = {
 // A guest's own pony settings; null for non-guests.
 export type WatchGuest = { kept: boolean; favoriteTag: string | null; rerollInMs: number };
 
+// Time left, so a wrong client clock doesn't matter.
+export type WatchAccess =
+  | { status: "ok" }
+  | { status: "pending" }
+  | { status: "blocked"; reason: "kicked" | "denied"; remainingMs: number }
+  | { status: "unauthorized" };
+
 export type WatchEvent =
-  | { type: "hello"; connectionId: string; self: WatchViewer; guest: WatchGuest | null }
+  | { type: "connected"; connectionId: string }
+  | { type: "state"; access: WatchAccess; online: boolean }
+  // Player only.
+  | { type: "hello"; self: WatchViewer; guest: WatchGuest | null }
   | { type: "presence"; viewers: WatchViewer[] }
   | ({ type: "reaction" } & WatchReaction);

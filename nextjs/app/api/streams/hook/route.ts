@@ -1,15 +1,13 @@
 import { syncStreamState } from '@/lib/streamState'
+import { notifyChanged } from '@/lib/events'
 import { syncDiscordWebhookMessage } from '@/lib/discordWebhook'
-import { timingSafeEqual } from 'crypto'
+import { safeEqual } from '@/lib/credentials'
 import { NextRequest } from 'next/server'
 
 function hasHookSecret(req: NextRequest): boolean {
   const expected = process.env.HOOK_SECRET
   const given = req.headers.get('x-hook-secret')
-  if (!expected || !given) return false
-  const a = Buffer.from(given)
-  const b = Buffer.from(expected)
-  return a.length === b.length && timingSafeEqual(a, b)
+  return !!expected && !!given && safeEqual(given, expected)
 }
 
 export async function POST(req: NextRequest) {
@@ -29,6 +27,8 @@ export async function POST(req: NextRequest) {
       } else if (action === 'notReady' || action === 'offline') {
         syncStreamState(path, { ready: false })
         await syncDiscordWebhookMessage(path, false)
+      } else if (action === 'read' || action === 'unread') {
+        notifyChanged(path)
       }
     }
     return new Response(JSON.stringify({ ok: true }), {

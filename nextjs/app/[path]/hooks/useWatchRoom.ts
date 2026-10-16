@@ -1,15 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import {
   REACTION_RATE_LIMIT,
   type Reaction,
-  type WatchEvent,
   type WatchGuest,
   type WatchReaction,
   type WatchViewer,
 } from '@/lib/watchRoomShared'
-
-const MIN_RETRY_MS = 2000
-const MAX_RETRY_MS = 30000
+import { useViewerChannel } from '@/app/hooks/useViewerChannel'
 
 export type PonyChangeResult =
   | { ok: true; favoriteTagMatched: boolean | null }
@@ -26,90 +23,22 @@ export function useWatchRoom(
   // Local time when the guest may reroll (or change their favorite tag) again.
   const [rerollReadyAt, setRerollReadyAt] = useState(0)
   const [ponyBusy, setPonyBusy] = useState(false)
-  const connectionIdRef = useRef<string | null>(null)
   const sentAtRef = useRef<number[]>([])
-  const onReactionRef = useRef(onReaction)
 
-  useEffect(() => {
-    onReactionRef.current = onReaction
-  }, [onReaction])
-
-  useEffect(() => {
-    let cancelled = false
-    let source: EventSource | null = null
-    let retryTimeout: ReturnType<typeof setTimeout> | null = null
-    let retryMs = MIN_RETRY_MS
-
-    function connect() {
-      if (cancelled) return
-      source = new EventSource(`/api/watch/${encodeURIComponent(path)}`)
-
-      source.onmessage = (message) => {
-        let event: WatchEvent
-        try {
-          event = JSON.parse(message.data)
-        } catch {
-          return
-        }
-        retryMs = MIN_RETRY_MS
-        if (event.type === 'hello') {
-          connectionIdRef.current = event.connectionId
-          setSelf(event.self)
-          setGuest(event.guest)
-          setRerollReadyAt(Date.now() + (event.guest?.rerollInMs ?? 0))
-        } else if (event.type === 'presence') {
-          setViewers(event.viewers)
-          setSelf(
-            (prev) => event.viewers.find((v) => v.id === prev?.id) ?? prev,
-          )
-        } else if (event.type === 'reaction') {
-          onReactionRef.current(event)
-        }
+  const { state, connectionIdRef } = useViewerChannel(path, {
+    onEvent(event) {
+      if (event.type === 'hello') {
+        setSelf(event.self)
+        setGuest(event.guest)
+        setRerollReadyAt(Date.now() + (event.guest?.rerollInMs ?? 0))
+      } else if (event.type === 'presence') {
+        setViewers(event.viewers)
+        setSelf((prev) => event.viewers.find((v) => v.id === prev?.id) ?? prev)
+      } else if (event.type === 'reaction') {
+        onReaction(event)
       }
-
-      // EventSource gives up for good on HTTP errors (e.g. 403 while kicked).
-      source.onerror = () => {
-        if (source?.readyState !== EventSource.CLOSED) return
-        connectionIdRef.current = null
-        setViewers([])
-        retryTimeout = setTimeout(connect, retryMs)
-        retryMs = Math.min(retryMs * 2, MAX_RETRY_MS)
-      }
-    }
-
-    // Tells the server right away instead of waiting for it to notice the
-    // closed stream, so others' viewer lists update immediately.
-    function leave() {
-      if (retryTimeout) clearTimeout(retryTimeout)
-      source?.close()
-      source = null
-      const connectionId = connectionIdRef.current
-      connectionIdRef.current = null
-      if (!connectionId) return
-      navigator.sendBeacon(
-        `/api/watch/${encodeURIComponent(path)}/leave`,
-        new Blob([JSON.stringify({ connectionId })], {
-          type: 'application/json',
-        }),
-      )
-    }
-
-    // Back/forward cache restores the page without re-running effects.
-    function onPageShow(event: PageTransitionEvent) {
-      if (event.persisted && !cancelled && !source) connect()
-    }
-
-    connect()
-    window.addEventListener('pagehide', leave)
-    window.addEventListener('pageshow', onPageShow)
-
-    return () => {
-      cancelled = true
-      window.removeEventListener('pagehide', leave)
-      window.removeEventListener('pageshow', onPageShow)
-      leave()
-    }
-  }, [path])
+    },
+  })
 
   const sendReaction = useCallback(
     (emoji: Reaction) => {
@@ -124,7 +53,7 @@ export function useWatchRoom(
       sentAtRef.current = recent
 
       // Echo locally; the server skips this connection.
-      onReactionRef.current({
+      onReaction({
         id: `local-${now}-${Math.random()}`,
         emoji,
         from: self,
@@ -137,7 +66,7 @@ export function useWatchRoom(
         body: JSON.stringify({ emoji, connectionId: connectionIdRef.current }),
       }).catch(() => {})
     },
-    [path, self],
+    [path, self, onReaction, connectionIdRef],
   )
 
   const kept = guest?.kept ?? null
@@ -207,6 +136,7 @@ export function useWatchRoom(
   )
 
   return {
+    state,
     viewers,
     self,
     guest,

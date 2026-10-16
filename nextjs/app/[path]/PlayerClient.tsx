@@ -1,11 +1,13 @@
 'use client'
 
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Box from '@mui/material/Box'
 import IconButton from '@mui/material/IconButton'
 import { AnimatePresence, motion } from 'motion/react'
 import { VolumeX, X } from 'lucide-react'
 import { useAvatarAccentDetection } from '@/lib/avatarAccent'
+import { loginUrlFor } from '@/lib/loginUrl'
 import { accentAlpha, accentGlassSx, glassSx } from '@/lib/theme'
 import {
   REACTIONS,
@@ -37,6 +39,7 @@ interface Props {
 }
 
 export default function PlayerClient({ path, whepUrl }: Props) {
+  const router = useRouter()
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const controlsHideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -86,18 +89,6 @@ export default function PlayerClient({ path, whepUrl }: Props) {
     }
   }, [autoMuted, setMuted])
 
-  const { status, peerConnectionRef } = useWhepPlayer({
-    whepUrl,
-    videoRef,
-    onAutoMuteRequired: handleAutoMuteRequired,
-  })
-
-  const isLive = status === 'connected'
-  const { stats, warnings, quality } = useConnectionStats(
-    peerConnectionRef,
-    isLive,
-  )
-
   const [floating, setFloating] = useState<FloatingReaction[]>([])
   const [reactionTrayOpen, setReactionTrayOpen] = useState(false)
 
@@ -116,6 +107,7 @@ export default function PlayerClient({ path, whepUrl }: Props) {
   }, [])
 
   const {
+    state,
     viewers,
     self,
     guest,
@@ -127,6 +119,28 @@ export default function PlayerClient({ path, whepUrl }: Props) {
     sendReaction,
     canReact,
   } = useWatchRoom(path, handleReaction)
+
+  const leaveForGate = useCallback(() => {
+    router.replace(loginUrlFor(path))
+  }, [router, path])
+  const mayWatch = !state || state.access.status === 'ok'
+  useEffect(() => {
+    if (!mayWatch) leaveForGate()
+  }, [mayWatch, leaveForGate])
+
+  const { status, peerConnectionRef } = useWhepPlayer({
+    whepUrl,
+    videoRef,
+    online: state?.online ?? null,
+    onAutoMuteRequired: handleAutoMuteRequired,
+    onDenied: leaveForGate,
+  })
+
+  const isLive = status === 'connected'
+  const { stats, warnings, quality } = useConnectionStats(
+    peerConnectionRef,
+    isLive,
+  )
   useEffect(() => {
     selfIdRef.current = self?.id ?? null
   }, [self])

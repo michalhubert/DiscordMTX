@@ -1,6 +1,7 @@
 'use client'
 
 import { signOut } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 import { useEffect, useState, type ReactNode } from 'react'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -8,15 +9,14 @@ import CircularProgress from '@mui/material/CircularProgress'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import { Lock, Radio, UserX } from 'lucide-react'
-import { usePolling } from '@/app/hooks/usePolling'
-import type { AccessBlock } from '@/lib/accessBlocks'
+import { useViewerChannel } from '@/app/hooks/useViewerChannel'
 import LoginShell from './LoginShell'
 
 type Gate =
   | { status: 'checking' | 'pending' | 'offline' }
-  | ({ status: 'blocked' } & AccessBlock)
+  | { status: 'blocked'; reason: 'kicked' | 'denied'; until: number }
 
-const blockTitles: Record<AccessBlock['reason'], string> = {
+const blockTitles: Record<'kicked' | 'denied', string> = {
   kicked: 'You were removed by the streamer',
   denied: 'The streamer declined your request',
 }
@@ -29,37 +29,36 @@ function formatTimeRemaining(ms: number): string {
 
 // For a signed-in viewer who can't watch yet.
 export default function StreamGate({ path }: { path: string }) {
-  const [gate, setGate] = useState<Gate>({ status: 'checking' })
+  const router = useRouter()
   const [now, setNow] = useState(() => Date.now())
+  const { state } = useViewerChannel(path, {
+    gate: true,
+    onEvent(event) {
+      if (event.type === 'state') setNow(Date.now())
+    },
+  })
+  const canWatch = state?.access.status === 'ok' && state.online
+  const isUnauthorized = state?.access.status === 'unauthorized'
+
+  let gate: Gate = { status: 'checking' }
+  if (state && !canWatch && !isUnauthorized) {
+    gate =
+      state.access.status === 'blocked'
+        ? {
+            status: 'blocked',
+            reason: state.access.reason,
+            until: state.receivedAt + state.access.remainingMs,
+          }
+        : { status: state.online ? 'pending' : 'offline' }
+  }
   const isBlocked = gate.status === 'blocked'
 
-  usePolling(
-    async (isCancelled) => {
-      try {
-        const res = await fetch(`/api/streams/${encodeURIComponent(path)}/access`)
-        if (isCancelled()) return
-        if (res.status === 401) {
-          window.location.reload()
-          return
-        }
-        if (!res.ok) return
-        const data = await res.json()
-        if (isCancelled()) return
-        if (data.status === 'approved') {
-          window.location.href = `/${path}`
-        } else if (data.status === 'blocked') {
-          setNow(Date.now())
-          setGate({ status: 'blocked', reason: data.reason, blockedUntil: data.blockedUntil })
-        } else {
-          setGate({ status: data.status === 'offline' ? 'offline' : 'pending' })
-        }
-      } catch (err) {
-        console.error('Failed to check stream access:', err)
-      }
-    },
-    isBlocked ? 1000 : 3000,
-    [path],
-  )
+  useEffect(() => {
+    if (canWatch) router.replace(`/${path}`)
+    // Shows the login form instead.
+    else if (isUnauthorized) router.refresh()
+  }, [canWatch, isUnauthorized, path, router])
+
   useEffect(() => {
     if (!isBlocked) return
     const interval = setInterval(() => setNow(Date.now()), 1000)
@@ -95,7 +94,7 @@ export default function StreamGate({ path }: { path: string }) {
         >
           You can try again in{' '}
           <Box component="span" sx={{ color: 'error.light', fontWeight: 600 }}>
-            {formatTimeRemaining(gate.blockedUntil - now)}
+            {formatTimeRemaining(gate.until - now)}
           </Box>
         </GateMessage>
       )}

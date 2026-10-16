@@ -7,6 +7,12 @@ export function mediamtxApiBase(): string {
   return `http://${mediamtxHost()}:${apiPort}`;
 }
 
+// MediaMTX's only user (see entrypoint.sh); it has no anonymous access.
+export function mediamtxAuthHeader(): string {
+  const password = process.env.STREAMER_PASSWORD ?? "";
+  return "Basic " + Buffer.from(`streamer:${password}`).toString("base64");
+}
+
 // WebRTC server (WHIP/WHEP endpoints), separate from the control API.
 export function mediamtxWebrtcBase(): string {
   const port = process.env.MEDIAMTX_PORT ?? "8889";
@@ -23,11 +29,14 @@ export function forwardSdpHeaders(res: Response): Headers {
   return headers;
 }
 
+const API_TIMEOUT_MS = 3000;
+
 async function listItems<T>(endpoint: string): Promise<T[] | null> {
   try {
     const res = await fetch(`${mediamtxApiBase()}/v3/${endpoint}`, {
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", Authorization: mediamtxAuthHeader() },
       cache: "no-store",
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -37,14 +46,34 @@ async function listItems<T>(endpoint: string): Promise<T[] | null> {
   }
 }
 
-export type PathItem = { name: string; ready?: boolean; readyTime?: string; [key: string]: unknown };
+export function listConfiguredPaths(): Promise<{ name: string }[] | null> {
+  return listItems<{ name: string }>("config/paths/list");
+}
+
+export function pathNames(...lists: ({ name: string }[] | null)[]): string[] {
+  return Array.from(new Set(lists.flatMap((list) => list ?? []).map((p) => p.name))).sort();
+}
+
+export type PathItem = {
+  name: string;
+  ready?: boolean;
+  readyTime?: string;
+  [key: string]: unknown;
+};
 
 // null = MediaMTX unreachable or errored.
 export function listPaths(): Promise<PathItem[] | null> {
   return listItems<PathItem>("paths/list");
 }
 
-export type WebrtcSessionItem = { id: string; path?: string; [key: string]: unknown };
+export type WebrtcSessionItem = {
+  id: string;
+  path?: string;
+  state?: string;
+  peerConnectionEstablished?: boolean;
+  user?: string;
+  [key: string]: unknown;
+};
 
 // null = MediaMTX unreachable or errored.
 export function fetchWebrtcSessions(): Promise<WebrtcSessionItem[] | null> {
@@ -65,6 +94,8 @@ export async function kickWebrtcSession(id: string): Promise<boolean> {
     // DELETE /v3/webrtcsessions/{id} (which doesn't exist and returns 404).
     const res = await fetch(`${mediamtxApiBase()}/v3/webrtcsessions/kick/${encodeURIComponent(id)}`, {
       method: "POST",
+      headers: { Authorization: mediamtxAuthHeader() },
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
     });
     return res.ok;
   } catch {

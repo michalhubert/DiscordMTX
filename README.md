@@ -23,6 +23,7 @@ FFmpeg transcoding may be added in the future.
 * Live emoji reactions that float over the player for every viewer (buttons or keys `1`-`8`)
 * Toggleable "who's watching" overlay (button or `V`), with Discord avatars
 * Connection warnings for viewers (packet loss, stalls, high latency, freezes, dropped frames, going offline) plus a signal indicator with live stats
+* Everything updates live: kicks, approvals, the stream going on/offline, viewers joining and leaving reach every open page within milliseconds (see [Live updates](#live-updates))
 * Automatic credential generation
 * Docker Compose deployment
 
@@ -48,14 +49,17 @@ Create a `.env` file:
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 PLAYER_DOMAIN=stream.example.com
 
-# Also gates access to the /dock OBS HUD
-STREAMER_PASSWORD=change-me
+# Required. Also gates access to the /dock OBS HUD; use a long, random one
+STREAMER_PASSWORD=
 
 WEBRTC_ADDITIONAL_HOSTS=192.168.1.100,203.0.113.10
 
 NEXTJS_PORT=8080
-NEXTAUTH_SECRET=change-me-to-a-random-secret
+# Required; generate one with: openssl rand -hex 32
+NEXTAUTH_SECRET=
 NEXTAUTH_URL=https://stream.example.com
+# Header your reverse proxy puts the client's IP in, see "Client IPs" below
+#CLIENT_IP_HEADER=x-forwarded-for
 # Optional, defaults to NEXTAUTH_SECRET
 #HOOK_SECRET=another-random-secret
 
@@ -98,24 +102,26 @@ docker compose down
 | `DISCORD_WEBHOOK_URL`     | Default Discord webhook used for stream online/offline notifications |
 | `DISCORD_WEBHOOK_URLS`    | Optional per-path webhook overrides (see below)    |
 | `PLAYER_DOMAIN`           | Domain used for the generated player URL           |
-| `STREAMER_PASSWORD`       | Password for the MediaMTX `streamer` user, and for the `/dock` OBS HUD |
+| `STREAMER_PASSWORD`       | Required. Password for the MediaMTX `streamer` user (OBS, and Next.js itself), and for the `/dock` OBS HUD |
 | `WEBRTC_TRUSTED_PROXIES`  | MediaMTX `webrtcTrustedProxies`, see [Trusted proxies](#trusted-proxies) |
 | `API_TRUSTED_PROXIES`     | MediaMTX `apiTrustedProxies`, see [Trusted proxies](#trusted-proxies) |
 | `WEBRTC_ADDITIONAL_HOSTS` | Addresses advertised to the WebRTC player          |
 | `UDP_READ_BUFFER_SIZE`    | MediaMTX UDP read buffer in bytes (default `1000000`), see [UDP Buffer Tuning](#udp-buffer-tuning-webrtc-packet-loss) |
 | `HOOK_ONLINE` / `HOOK_OFFLINE` / `HOOK_ONLINE_RESTART` | Default stream hooks, see [Hooks](#hooks) |
+| `HOOK_VIEWER`             | Hook run when a viewer starts/stops watching (default `/hooks/stream-viewer.sh`; set empty to turn off), see [Hooks](#hooks) |
 | `NEXTJS_URL`              | Where the stream hooks reach Next.js from the discordmtx container (default `http://nextjs:3000`) |
 | `NEXTJS_PORT`             | Host port exposed by the Next.js frontend          |
 | `MEDIAMTX_HOST`           | Hostname/IP of the discordmtx service the Next.js WHEP/API proxy talks to |
 | `MEDIAMTX_PORT`           | Port of the discordmtx service the Next.js WHEP proxy talks to (default `8889`) |
 | `MEDIAMTX_API_PORT`       | Port of the discordmtx MediaMTX control API used by `/dock` (default `9997`) |
-| `NEXTAUTH_SECRET`         | Random secret used to sign Next.js session cookies |
+| `NEXTAUTH_SECRET`         | Required. Random secret used to sign Next.js session cookies; anyone who knows it can sign in as the streamer |
 | `HOOK_SECRET`             | Shared secret MediaMTX's stream hooks send to `/api/streams/hook` (defaults to `NEXTAUTH_SECRET`; set the same value on both services) |
 | `NEXTAUTH_URL`            | Public URL of the Next.js frontend                 |
 | `DISCORD_CLIENT_ID`       | Discord OAuth application client ID                |
 | `DISCORD_CLIENT_SECRET`   | Discord OAuth application client secret            |
 | `NEXT_PUBLIC_DISCORD_ENABLED` | Set to `true` to show the "Sign in with Discord" button on the login page |
-| `DISABLE_DOCK_AUTH`       | Set to `true` to skip authentication on `/dock` and `/stream` (useful when the frontend is only reachable from a trusted/local network) |
+| `DISABLE_DOCK_AUTH`       | Set to `true` to skip authentication on `/dock` and `/stream`. **Everyone who can reach the app then has full streamer control**, so only use it when the app isn't reachable from the internet |
+| `CLIENT_IP_HEADER`        | Header the reverse proxy puts the client's IP in (default `x-forwarded-for`), see [Client IPs](#client-ips) |
 | `DENIAL_TIMEOUTS`         | Comma-separated minutes a kicked or denied viewer is kept out, growing with each repeat kick or denial within an hour; the last value repeats (default `1,5,15`) |
 | `GUEST_AVATAR_FILTER_ID`  | Derpibooru filter used for guest avatars (optional, defaults to Derpibooru's default filter), see below |
 | `GUEST_AVATAR_TAGS`       | Extra Derpibooru tags every guest avatar must have (optional), see below |
@@ -196,7 +202,7 @@ The web interface/player itself can still be served through the normal Cloudflar
 
 `WEBRTC_TRUSTED_PROXIES` and `API_TRUSTED_PROXIES` are MediaMTX's own settings, not the Next.js app's. They list the addresses MediaMTX lets set `X-Forwarded-For` on its WebRTC (`8889`) and control API (`9997`) ports. MediaMTX only uses that header to work out the client's IP for its logs and for IP-restricted users, and this stack has no IP-restricted users.
 
-Next.js doesn't send `X-Forwarded-For` to MediaMTX, so these settings don't change how the app behaves. Next.js works out viewer IPs itself, from `CF-Connecting-IP`, `X-Forwarded-For` or `X-Real-IP`, set by the reverse proxy in front of it.
+Next.js doesn't send `X-Forwarded-For` to MediaMTX, so these settings don't change how the app behaves. Next.js works out viewer IPs itself, see [Client IPs](#client-ips).
 
 The default, `0.0.0.0/0,::/0`, trusts everyone. That's harmless for the API, which isn't published outside the Docker network. Port `8889` is published for OBS, though, so anyone reaching it can fake their IP in MediaMTX's logs. Since nothing in the stack needs to set the header, the safest value is localhost only:
 
@@ -206,6 +212,15 @@ API_TRUSTED_PROXIES=127.0.0.1/32
 ```
 
 Don't use the Docker network's subnet instead: Docker's port proxy can make outside traffic look like it comes from the network's gateway, which is inside that subnet.
+
+### Client IPs
+
+Guests (viewer password) can only be told apart by IP, so approvals, kicks and denials for them depend on Next.js knowing each viewer's real IP. It takes it from the header named by `CLIENT_IP_HEADER`, which your reverse proxy must set:
+
+* `x-forwarded-for` (default): the **last** entry is used, the one added by the proxy right in front of Next.js. Works with a single proxy such as NGINX, Caddy, Traefik, Cloudflare or a Cloudflare Tunnel.
+* With several proxies, e.g. Cloudflare in front of NGINX, the last entry is the outer proxy's address. Use a header the outer proxy sets instead, such as `cf-connecting-ip`, and make sure Next.js is only reachable through it, or clients can send that header themselves.
+
+Without a reverse proxy, clients can pick their own IP, so don't expose Next.js directly.
 
 ## Ports
 
@@ -269,6 +284,7 @@ Each path can have:
 - **hook_online**: Optional custom online hook script path
 - **hook_offline**: Optional custom offline hook script path
 - **hook_online_restart**: Optional boolean for hook restart behavior
+- **hook_viewer**: Optional custom viewer hook script path
 
 Per-path Discord webhooks are configured separately via the `DISCORD_WEBHOOK_URLS` environment variable (see [Configuration](#configuration)), not in `paths.yml`.
 
@@ -276,13 +292,15 @@ If no `paths.yml` is mounted, or the mounted file is empty/invalid, `entrypoint.
 
 Because path names are mapped to MediaMTX's `MTX_PATHS_<NAME>_*` environment variables (see [MediaMTX configuration](#mediamtx) below), use single-word, alphanumeric path names (e.g. `desktop`, `gaming`). Names containing `-` or `_` are ambiguous for MediaMTX's environment variable parser and are not supported.
 
-The `streamer` user can only publish (and the `any`/anonymous user can only read) paths that are explicitly listed in `paths.yml` - `entrypoint.sh` grants publish/read permissions and hook overrides per path, one by one. There is no wildcard/"any path" access: a path not declared in `paths.yml` has no permissions at all, so both OBS and the `/stream` browser-capture panel (see [Browser Streaming Panel](#browser-streaming-panel)) can only publish to a path that's already configured there.
+`streamer` is MediaMTX's only user: nothing can be read or published without its password, so viewers can only watch through Next.js, which checks their access. It can only publish to paths that are explicitly listed in `paths.yml` - `entrypoint.sh` grants publish permissions and hook overrides per path, one by one. A path not declared in `paths.yml` can't be published to, so both OBS and the `/stream` browser-capture panel (see [Browser Streaming Panel](#browser-streaming-panel)) can only publish to a path that's already configured there.
 
 MediaMTX configuration:
 
 ```text
 mediamtx.yml
 ```
+
+Only WebRTC is enabled (WHIP for publishing, WHEP for playback); MediaMTX's RTSP, RTMP, HLS, SRT and MoQ servers are turned off in `mediamtx.yml`.
 
 MediaMTX natively supports configuration through [environment variables](https://mediamtx.org/docs/features/configuration) in the format `MTX_PARAMNAME`. Instead of rendering a full configuration file, `entrypoint.sh` exports the required `MTX_*` variables (derived from the environment and `paths.yml`, if present) and lets MediaMTX apply them on top of `mediamtx.yml` at startup.
 
@@ -313,9 +331,10 @@ Default configuration:
 HOOK_ONLINE=/hooks/stream-online.sh
 HOOK_ONLINE_RESTART=false
 HOOK_OFFLINE=/hooks/stream-offline.sh
+HOOK_VIEWER=/hooks/stream-viewer.sh
 ```
 
-MediaMTX runs the online hook when the stream starts and the offline hook when it stops. Both hooks call the Next.js app's `/api/streams/hook` endpoint at `NEXTJS_URL` (default `http://nextjs:3000`, the compose service name, so changing `container_name` doesn't break it; set it if you rename the service or run Next.js elsewhere). They authenticate with `HOOK_SECRET`, which must be the same on both services. The endpoint - besides initializing/clearing access sessions - owns the Discord webhook message for that path (`lib/discordWebhook.ts`): it posts one message when the stream first goes online, then edits that same message in place on every subsequent online/offline transition instead of posting a new one each time. The message id is persisted in the SQLite database, so edits keep working across restarts, and if the stored message was deleted manually (or the webhook URL changed), a fresh message is posted and tracked instead.
+MediaMTX runs the online hook when the stream starts and the offline hook when it stops. It runs the viewer hook (with `read` or `unread`) whenever someone starts or stops watching, so the dock's viewer list updates at once. All hooks call the Next.js app's `/api/streams/hook` endpoint at `NEXTJS_URL` (default `http://nextjs:3000`, the compose service name, so changing `container_name` doesn't break it; set it if you rename the service or run Next.js elsewhere). They authenticate with `HOOK_SECRET`, which must be the same on both services. The endpoint - besides initializing/clearing access sessions - owns the Discord webhook message for that path (`lib/discordWebhook.ts`): it posts one message when the stream first goes online, then edits that same message in place on every subsequent online/offline transition instead of posting a new one each time. The message id is persisted in the SQLite database, so edits keep working across restarts, and if the stored message was deleted manually (or the webhook URL changed), a fresh message is posted and tracked instead.
 
 Viewer passwords are stored per-path in the SQLite database and can be rotated via the streamer dock (/dock). When a password is rotated, all existing viewer sessions are invalidated and viewers must re-login with the new password. The player URL posted to Discord never contains credentials - viewers enter the password on the Next.js login page.
 
@@ -325,13 +344,27 @@ The Next.js app resolves the Discord webhook to use for the current path from th
 
 A private streamer dashboard is available at `/dock` in the Next.js frontend, gated by its own login (`STREAMER_PASSWORD`) - separate from both the Discord login and the per-stream viewer password, so viewers can never reach it.
 
-It talks to MediaMTX's control API through `/api/mediamtx/*`, a same-origin proxy in the Next.js app (equivalent to the old `/streamer/api/` NGINX proxy to `discordmtx:9997/v3/`).
+The Next.js app reads MediaMTX's control API (`discordmtx:9997/v3/`) for it and pushes the dock everything it shows (see [Live updates](#live-updates)).
 
 Features:
-* Real-time viewer count and stream status (Live / Offline)
+* Live viewer count and stream status (Live / Offline)
 * Connected viewer IP addresses, stream paths, session durations, and transferred data
 * Live activity log showing recent viewer connections and disconnections
 * Optional audio chime synthesized via Web Audio API on viewer join
+* Kicking, approving, denying and switching a stream between public and private take effect at once, both in the dock and for the viewers concerned
+
+## Live updates
+
+Pages don't poll for changes; the server pushes them over [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events):
+
+* The player and the "waiting for approval" screen share one stream per page (`/api/watch/<path>`). It carries whether the viewer may watch (or is waiting, kicked or denied, with the time left) and whether the stream is online, plus the viewer list and reactions. A kicked viewer is moved to the removal screen right away, an approved one straight into the stream, and the player connects as soon as the stream goes live.
+* The dock has its own stream (`/api/dock/events`) with everything it shows.
+* A waiting viewer's request lasts as long as their waiting screen is open: closing it takes them off the dock's pending list immediately.
+* Stream state comes from the MediaMTX hooks (see [Hooks](#hooks)). In case one is missed, for example because of a wrong `HOOK_SECRET`, Next.js also checks MediaMTX every 10 seconds while anyone is watching.
+
+Proxies in front of the Next.js app must not buffer responses for this to work. Responses carry `X-Accel-Buffering: no` for NGINX; other proxies (and Cloudflare) stream them as-is.
+
+All of this state lives in the Next.js server's memory and SQLite database, so run a single Next.js container.
 
 ### Adding to OBS Studio
 1. In OBS Studio, open **Docks** > **Custom Browser Docks...**
@@ -403,4 +436,4 @@ Keep in mind that HTTPS proxying and WebRTC are separate connections. Cloudflare
 
 ## Note
 
-Next.js part of the project was done using AI tools, the frontend part will be refactored manually in the future.
+Built with help from Claude Code.

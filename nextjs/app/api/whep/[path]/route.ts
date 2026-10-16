@@ -3,7 +3,13 @@ import { rememberViewerIdentity } from '@/lib/viewerIdentities'
 import { getClientIp } from '@/lib/net'
 import { type SessionUser } from '@/lib/authz'
 import { watchAccessDenied } from '@/lib/watchAccess'
-import { forwardSdpHeaders, mediamtxWebrtcBase } from '@/lib/mediamtx'
+import {
+  forwardSdpHeaders,
+  mediamtxAuthHeader,
+  mediamtxWebrtcBase,
+} from '@/lib/mediamtx'
+import { notifyChanged } from '@/lib/events'
+import { PATH_NAME_RE } from '@/lib/streamSettings'
 import { NextRequest } from 'next/server'
 
 export async function POST(
@@ -16,6 +22,7 @@ export async function POST(
   }
 
   const { path } = await params
+  if (!PATH_NAME_RE.test(path)) return new Response(null, { status: 404 })
   const user = session.user as SessionUser
   const ip = getClientIp(req)
 
@@ -32,7 +39,10 @@ export async function POST(
   const body = await req.text()
   const res = await fetch(upstream, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/sdp' },
+    headers: {
+      'Content-Type': 'application/sdp',
+      Authorization: mediamtxAuthHeader(),
+    },
     body,
   })
 
@@ -56,6 +66,7 @@ export async function POST(
       discordId: user.role === 'discord' ? user.id : null,
       path,
     })
+    notifyChanged(path)
   }
 
   return new Response(await res.text(), {

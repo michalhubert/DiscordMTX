@@ -1,23 +1,12 @@
-// Best-effort client IP extraction. When the site is proxied through
-// Cloudflare, CF-Connecting-IP is Cloudflare's own record of the client's
-// real IP and can't be spoofed by the client, so it takes priority over
-// X-Forwarded-For - without it, X-Forwarded-For's leftmost entry actually
-// ends up being Cloudflare's edge IP (e.g. 172.64.x.x) rather than the
-// visitor's, since nothing upstream of this app appends the real client
-// IP to that header
-// Falls back to X-Forwarded-For/X-Real-IP, trusted as-is: the reverse proxy
-// in front of this app is expected to overwrite them, otherwise a client
-// can pick its own IP.
-export function getClientIp(req: { headers: Headers }): string {
-  const cfConnectingIp = req.headers.get("cf-connecting-ip");
-  if (cfConnectingIp) return cfConnectingIp.trim();
+// The header the reverse proxy in front of this app puts the client's IP in.
+// For x-forwarded-for only the last entry is trusted: it's added by the
+// closest proxy, while earlier ones come from the client. Any other header
+// (e.g. cf-connecting-ip) must be overwritten by the proxy, or clients can
+// pick their own IP.
+const CLIENT_IP_HEADER = (process.env.CLIENT_IP_HEADER || "x-forwarded-for").toLowerCase();
 
-  const xff = req.headers.get("x-forwarded-for");
-  if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  const realIp = req.headers.get("x-real-ip");
-  if (realIp) return realIp.trim();
-  return "unknown";
+export function getClientIp(req: { headers: Headers }): string {
+  const value = req.headers.get(CLIENT_IP_HEADER);
+  const ip = CLIENT_IP_HEADER === "x-forwarded-for" ? value?.split(",").at(-1) : value;
+  return ip?.trim() || "unknown";
 }

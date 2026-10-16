@@ -7,18 +7,19 @@ apiTrustedProxies:
 authMethod: internal
 
 authInternalUsers:
-  # Owner. Publish permissions are added dynamically per path by entrypoint.sh
-  # via MTX_AUTHINTERNALUSERS_0_PERMISSIONS_* environment variables.
+  # The only user, so nothing is reachable anonymously. Its password and
+  # permissions are set by entrypoint.sh.
   - user: streamer
     permissions:
       - action: api
       - action: metrics
 
-  # Unauthenticated / anonymous internal users (for API queries from NGINX/hooks)
-  - user: any
-    permissions:
-      - action: api
-      - action: metrics
+# Only WebRTC is used (WHIP publishing, WHEP playback through Next.js).
+rtsp: false
+rtmp: false
+hls: false
+srt: false
+moq: false
 
 webrtc: true
 webrtcAddress: :8889

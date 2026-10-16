@@ -1,99 +1,176 @@
 import { randomUUID } from 'crypto'
-import { authorizeWatch, watchAccessDenied } from '@/lib/watchAccess'
+import { auth } from '@/lib/auth'
+import { type SessionUser } from '@/lib/authz'
+import {
+  approvalKey,
+  closeAccessRequest,
+  keepAccessRequest,
+  openAccessRequest,
+  type AccessRequester,
+} from '@/lib/accessRequests'
+import { affectsPath, onChanged } from '@/lib/events'
+import { ponyKeyFor } from '@/lib/guestIdentity'
+import { getClientIp } from '@/lib/net'
+import { eventStream } from '@/lib/sse'
+import {
+  isStreamOnline,
+  refreshStreamStates,
+  watchStreamStates,
+} from '@/lib/streamState'
+import {
+  authorizeWatch,
+  viewerAccess,
+  type ViewerAccess,
+} from '@/lib/watchAccess'
 import {
   allowReaction,
   broadcastWatchEvent,
   joinWatchRoom,
   leaveWatchRoom,
   refreshWatchGuest,
+  registerWatchConnection,
   watchViewerFor,
 } from '@/lib/watchRoom'
-import { isReaction, type WatchEvent } from '@/lib/watchRoomShared'
+import {
+  isReaction,
+  type WatchAccess,
+  type WatchEvent,
+} from '@/lib/watchRoomShared'
+import { PATH_NAME_RE } from '@/lib/streamSettings'
 import { NextRequest } from 'next/server'
 
 // Not under /api/stream*: the middleware treats that prefix as streamer-only.
 
-const HEARTBEAT_MS = 15_000
+function toWatchAccess(access: ViewerAccess): WatchAccess {
+  if (access.status !== 'blocked') return access
+  return {
+    status: 'blocked',
+    reason: access.reason,
+    remainingMs: Math.max(access.blockedUntil - Date.now(), 0),
+  }
+}
 
-// SSE stream of presence updates and reactions.
+// ?mode=gate is the waiting screen; its open connection is the access request.
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ path: string }> },
 ) {
   const { path } = await params
-  const result = await authorizeWatch(req, path)
-  if (!result.user) return new Response(null, { status: result.error })
-  const { user, ip } = result
+  if (!PATH_NAME_RE.test(path)) return new Response(null, { status: 404 })
+  const session = await auth()
+  if (!session?.user) return new Response(null, { status: 401 })
+  const user = session.user as SessionUser
+  const ip = getClientIp(req)
+  const isGate = req.nextUrl.searchParams.get('mode') === 'gate'
+  const discordId = user.role === 'discord' ? user.id : null
+  const requester: AccessRequester = {
+    path,
+    ip: approvalKey(user.role, ip, discordId),
+    role: user.role,
+    name: user.role === 'discord' ? user.name : null,
+    image: user.role === 'discord' ? user.image : null,
+    discordId,
+  }
 
-  const { viewer, guest, ponyKey } = await watchViewerFor(user, ip, path)
-  const connectionId = randomUUID()
-  const encoder = new TextEncoder()
-  let cleanup = () => {}
+  // In case a hook was missed.
+  await refreshStreamStates()
 
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      let closed = false
-      let heartbeat: ReturnType<typeof setInterval> | undefined
+  return eventStream(req, (stream) => {
+    const connectionId = randomUUID()
+    const send = (event: WatchEvent) => stream.send(event)
+    let closed = false
+    let lastState = ''
+    let requestOpen = false
+    let blockTimer: ReturnType<typeof setTimeout> | undefined
+    // Access can flip while a join is underway.
+    let inRoom = false
+    let roomToken = 0
+    // Going public turns Discord viewers into ponies.
+    let roomPonyKey: string | null = null
+    const currentPonyKey = () => ponyKeyFor(user.role, user.name, ip, path)
 
-      const write = (chunk: string) => {
-        if (closed) return
-        try {
-          controller.enqueue(encoder.encode(chunk))
-        } catch {
-          cleanup()
-        }
+    async function joinRoom() {
+      inRoom = true
+      roomPonyKey = currentPonyKey()
+      const token = ++roomToken
+      let joined
+      try {
+        joined = await watchViewerFor(user, ip, path)
+      } catch (err) {
+        console.error('Failed to join watch room:', err)
+        if (token === roomToken) inRoom = false
+        return
       }
-      const send = (event: WatchEvent) =>
-        write(`data: ${JSON.stringify(event)}\n\n`)
-
-      cleanup = () => {
-        if (closed) return
-        closed = true
-        clearInterval(heartbeat)
-        req.signal.removeEventListener('abort', cleanup)
-        leaveWatchRoom(path, connectionId)
-        try {
-          controller.close()
-        } catch {
-          // Already closed by the client.
-        }
-      }
-
-      // Padding: Safari and some proxies buffer the first ~1KB.
-      write(`:${' '.repeat(2048)}\n\nretry: 3000\n\n`)
-      send({ type: 'hello', connectionId, self: viewer, guest })
+      if (closed || token !== roomToken) return
+      send({ type: 'hello', self: joined.viewer, guest: joined.guest })
       joinWatchRoom(path, {
         connectionId,
-        viewer,
+        viewer: joined.viewer,
         ip,
         role: user.role,
-        ponyKey,
+        ponyKey: joined.ponyKey,
         send,
-        close: cleanup,
       })
+    }
 
-      // Keeps proxies from idling out, drops viewers who lost access, and picks
-      // up a guest's new identity on a new stream.
-      heartbeat = setInterval(() => {
-        if (watchAccessDenied(user, path, ip)) return cleanup()
-        write(': ping\n\n')
-        if (ponyKey) void refreshWatchGuest(path, ponyKey)
-      }, HEARTBEAT_MS)
+    function leaveRoom() {
+      if (!inRoom) return
+      inRoom = false
+      roomToken++
+      leaveWatchRoom(path, connectionId)
+    }
 
-      req.signal.addEventListener('abort', cleanup)
-    },
-    cancel() {
-      cleanup()
-    },
-  })
+    function update() {
+      if (closed) return
+      const access = viewerAccess(user, path, ip)
+      const online = isStreamOnline(path)
 
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-      'X-Accel-Buffering': 'no',
-    },
+      const wantsRequest = isGate && access.status === 'pending' && online
+      if (wantsRequest && !requestOpen) openAccessRequest(requester)
+      else if (!wantsRequest && requestOpen) closeAccessRequest(requester)
+      requestOpen = wantsRequest
+
+      clearTimeout(blockTimer)
+      if (access.status === 'blocked') {
+        blockTimer = setTimeout(update, access.blockedUntil - Date.now() + 50)
+      }
+
+      if (!isGate) {
+        if (access.status !== 'ok') leaveRoom()
+        else if (!inRoom || currentPonyKey() !== roomPonyKey) void joinRoom()
+      }
+
+      // By end time; the time left always changes.
+      const state = JSON.stringify({ access, online })
+      if (state === lastState) return
+      lastState = state
+      send({ type: 'state', access: toWatchAccess(access), online })
+    }
+
+    send({ type: 'connected', connectionId })
+    const unregister = registerWatchConnection(path, connectionId, stream.close)
+    const stopWatchingStreams = watchStreamStates()
+    const unsubscribe = onChanged((paths) => {
+      if (affectsPath(paths, path)) update()
+    })
+    update()
+
+    return {
+      heartbeat() {
+        update()
+        if (requestOpen) keepAccessRequest(requester)
+        if (inRoom && roomPonyKey) void refreshWatchGuest(path, roomPonyKey)
+      },
+      close() {
+        closed = true
+        clearTimeout(blockTimer)
+        unsubscribe()
+        stopWatchingStreams()
+        unregister()
+        leaveRoom()
+        if (requestOpen) closeAccessRequest(requester)
+      },
+    }
   })
 }
 
