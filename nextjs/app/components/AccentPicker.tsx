@@ -79,6 +79,7 @@ export function AccentPickerPopover({ anchorEl, onClose }: PopoverProps) {
       open={!!anchorEl}
       anchorEl={anchorEl}
       onClose={onClose}
+      container={() => document.fullscreenElement ?? document.body}
       onClick={(e) => e.stopPropagation()}
       anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
       transformOrigin={{ vertical: 'bottom', horizontal: 'center' }}
@@ -137,7 +138,9 @@ export function AccentPickerPopover({ anchorEl, onClose }: PopoverProps) {
               Match my avatar
             </Typography>
             <Typography variant="caption" color="text.secondary" component="p">
-              {avatarAccent ? 'Picked from your picture' : 'No colour found in your picture'}
+              {avatarAccent
+                ? 'Picked from your picture'
+                : 'No colour found in your picture'}
             </Typography>
           </Box>
         </ButtonBase>
