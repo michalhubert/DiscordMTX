@@ -348,10 +348,13 @@ The Next.js app reads MediaMTX's control API (`discordmtx:9997/v3/`) for it and 
 
 Features:
 * Live viewer count and stream status (Live / Offline)
-* Connected viewer IP addresses, stream paths, session durations, and transferred data
-* Live activity log showing recent viewer connections and disconnections
+* Connected viewers with their IP address and stream path
+* Pending requests and current viewers are virtualized, scrollable lists with a search box (matches the viewer's name, Discord account, or IP)
+* Activity log of recent viewer connections and disconnections, opened in a popup from the header's log button
 * Optional audio chime synthesized via Web Audio API on viewer join
+* The header shows the live stream's path. When several paths are live at once (e.g. OBS on `desktop` and the browser panel on `browser`), it becomes a dropdown with each stream's viewer and pending counts, and the password, public/private switch, pending requests, viewers and activity below all follow the picked stream. Join/leave chimes still play for every stream
 * Kicking, approving, denying and switching a stream between public and private take effect at once, both in the dock and for the viewers concerned
+* Switching a stream with viewers to private asks what to do with them: approve them all so they keep watching, make them request access again, or kick them all (each gets the same timeout as a manual kick, see `DENIAL_TIMEOUTS`)
 
 ## Live updates
 
