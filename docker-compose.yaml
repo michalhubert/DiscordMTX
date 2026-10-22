@@ -27,8 +27,8 @@ services:
       UDP_READ_BUFFER_SIZE: ${UDP_READ_BUFFER_SIZE:-1000000}
 
     volumes:
-      - ./hooks:/opt/hooks:ro # custom hooks if needed
-      - ./paths.yml:/opt/streams/paths.yml:ro # path configuration
+      - ./mediamtx/hooks:/opt/hooks:ro # custom hooks if needed
+      - ./mediamtx/paths.yml:/opt/streams/paths.yml:ro # path configuration
 
     ports:
       # 8889 is exposed so OBS (running on the streamer's own machine, not
