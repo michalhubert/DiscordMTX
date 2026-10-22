@@ -1,26 +1,33 @@
 'use client'
 
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import Avatar from '@mui/material/Avatar'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
-import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
+import Dialog from '@mui/material/Dialog'
+import DialogContent from '@mui/material/DialogContent'
+import DialogTitle from '@mui/material/DialogTitle'
+import InputAdornment from '@mui/material/InputAdornment'
 import IconButton from '@mui/material/IconButton'
-import Link from '@mui/material/Link'
+import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
+import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
+import Switch from '@mui/material/Switch'
+import TextField from '@mui/material/TextField'
 import type { SxProps, Theme } from '@mui/material/styles'
 import Typography from '@mui/material/Typography'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   Bell,
   BellOff,
-  Clock,
   Dices,
   Globe,
-  HardDrive,
   Lock,
   RefreshCw,
+  ScrollText,
+  Search,
   X,
 } from 'lucide-react'
 import AccentPicker from '@/app/components/AccentPicker'
@@ -31,15 +38,20 @@ import { accentAlpha } from '@/lib/theme'
 import { useEventStream } from '../hooks/useEventStream'
 
 type StreamEvent = {
+  id: number
   type: 'join' | 'leave'
   text: string
   viewer: string
+  path: string | null
   time: string
 }
 
 type Visibility = 'public' | 'private'
 
-const MAX_EVENTS = 20
+// What happens to people already watching when a stream goes private.
+type ViewerAction = 'approve' | 'reapprove' | 'kick'
+
+const MAX_EVENTS = 500
 
 type HudStatus = 'checking' | 'live' | 'offline' | 'error'
 
@@ -58,24 +70,9 @@ function viewerLabel(viewer: DockViewer) {
   return viewer.name || viewer.ip || 'Guest'
 }
 
-function formatBytes(bytes?: number) {
-  if (!bytes || bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
-}
-
-function formatDuration(startTime: string | null, now: number) {
-  if (!startTime) return '0s'
-  const start = new Date(startTime).getTime()
-  const diffSec = Math.max(0, Math.floor((now - start) / 1000))
-  if (diffSec < 60) return `${diffSec}s`
-  const mins = Math.floor(diffSec / 60)
-  const secs = diffSec % 60
-  if (mins < 60) return `${mins}m ${secs}s`
-  const hrs = Math.floor(mins / 60)
-  return `${hrs}h ${mins % 60}m`
+function matchesQuery(query: string, ...fields: (string | null)[]) {
+  const q = query.trim().toLowerCase()
+  return !q || fields.some((f) => f?.toLowerCase().includes(q))
 }
 
 export default function DockClient({ embedded = false }: { embedded?: boolean }) {
@@ -83,17 +80,22 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
   const [snapshot, setSnapshot] = useState<DockSnapshot | null>(null)
   const [events, setEvents] = useState<StreamEvent[]>([])
   const [copied, setCopied] = useState(false)
-  const [now, setNow] = useState(() => Date.now())
+  const [selectedPath, setSelectedPath] = useState<string | null>(null)
+  const [logsOpen, setLogsOpen] = useState(false)
+  const [confirmPrivatePath, setConfirmPrivatePath] = useState<string | null>(null)
+  const [pendingQuery, setPendingQuery] = useState('')
+  const [viewerQuery, setViewerQuery] = useState('')
   // A double-clicked deny would escalate the block.
   const [busy, setBusy] = useState<string | null>(null)
 
   const soundEnabledRef = useRef(soundEnabled)
   soundEnabledRef.current = soundEnabled
-  const knownViewers = useRef<Map<string, string> | null>(null)
+  const knownViewers = useRef<Map<string, DockViewer> | null>(null)
   // Logged as kicked, so not again as disconnected.
   const kickedViewers = useRef(new Set<string>())
   const audioCtxRef = useRef<AudioContext | null>(null)
   const wasLiveRef = useRef<boolean | null>(null)
+  const nextEventId = useRef(0)
 
   function withAudio(play: (ctx: AudioContext, now: number) => void) {
     if (!soundEnabledRef.current) return
@@ -158,18 +160,19 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
     })
   }
 
-  function logEvent(type: 'join' | 'leave', text: string, viewer: string) {
+  function logEvent(type: 'join' | 'leave', text: string, viewer: DockViewer) {
     const now = new Date()
     const timeStr = now.toTimeString().split(' ')[0]
-    setEvents((prev) =>
-      [{ type, text, viewer, time: timeStr }, ...prev].slice(0, MAX_EVENTS),
-    )
+    const event = {
+      id: nextEventId.current++,
+      type,
+      text,
+      viewer: viewerLabel(viewer),
+      path: viewer.path,
+      time: timeStr,
+    }
+    setEvents((prev) => [event, ...prev].slice(0, MAX_EVENTS))
   }
-
-  useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(interval)
-  }, [])
 
   function announceChanges(next: DockSnapshot) {
     // A failed MediaMTX request isn't the stream ending or everyone leaving.
@@ -182,17 +185,17 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
     wasLiveRef.current = isLive
 
     const known = knownViewers.current
-    const current = new Map(next.viewers.map((v) => [v.id, viewerLabel(v)]))
+    const current = new Map(next.viewers.map((v) => [v.id, v]))
     knownViewers.current = current
     if (!known) return
     for (const viewer of next.viewers) {
       if (known.has(viewer.id)) continue
-      logEvent('join', `joined /${viewer.path || 'stream'}`, viewerLabel(viewer))
+      logEvent('join', `joined /${viewer.path || 'stream'}`, viewer)
       playChime(true)
     }
-    for (const [id, name] of known) {
+    for (const [id, viewer] of known) {
       if (current.has(id) || kickedViewers.current.delete(id)) continue
-      logEvent('leave', 'disconnected', name)
+      logEvent('leave', 'disconnected', viewer)
       playChime(false)
     }
   }
@@ -203,16 +206,31 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
       if (event.type !== 'snapshot') return
       announceChanges(event.snapshot)
       setSnapshot(event.snapshot)
-      setNow(Date.now())
     },
   )
 
   const visibilities = snapshot?.visibility ?? {}
-  const pendingRequests = snapshot?.pending ?? []
-  const readers = snapshot?.viewers ?? []
-  const availablePaths = snapshot?.paths ?? []
-  const currentPath = snapshot?.currentPath ?? ''
-  const viewerPassword = snapshot?.viewerPassword ?? null
+  const livePaths = snapshot?.livePaths ?? []
+  // Falls back to the first live stream when the picked one ends.
+  const currentPath =
+    selectedPath && livePaths.includes(selectedPath) ? selectedPath : (livePaths[0] ?? null)
+  // While offline nothing is filtered, so requests waiting for a stream to start still show.
+  const onCurrentPath = (path: string | null) => !currentPath || path === currentPath
+  const allPending = snapshot?.pending ?? []
+  const allReaders = snapshot?.viewers ?? []
+  const pendingRequests = allPending.filter((r) => onCurrentPath(r.path))
+  const readers = allReaders.filter((r) => onCurrentPath(r.path))
+  const visibleEvents = events.filter((e) => onCurrentPath(e.path))
+  const filteredPending = pendingRequests.filter((r) =>
+    matchesQuery(pendingQuery, r.name, r.ip),
+  )
+  const filteredReaders = readers.filter((r) =>
+    matchesQuery(viewerQuery, r.name, r.discordName, r.ip),
+  )
+  const viewerPassword = currentPath ? (snapshot?.viewerPasswords[currentPath] ?? null) : null
+  const isPublic = !!currentPath && visibilities[currentPath] === 'public'
+  const watchingCount = (path: string) => allReaders.filter((r) => r.path === path).length
+  const confirmPrivateViewers = confirmPrivatePath ? watchingCount(confirmPrivatePath) : 0
 
   let status: HudStatus = 'checking'
   if (snapshot) {
@@ -234,16 +252,26 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
     }
   }
 
-  function toggleVisibility(path: string) {
-    const visibility: Visibility =
-      visibilities[path] === 'private' ? 'public' : 'private'
+  function setVisibility(path: string, visibility: Visibility, viewers?: ViewerAction) {
     return run(`visibility:${path}`, () =>
       fetch('/api/streams/visibility', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, visibility }),
+        body: JSON.stringify({ path, visibility, viewers }),
       }),
     )
+  }
+
+  function toggleVisibility(path: string) {
+    if (visibilities[path] !== 'public') return setVisibility(path, 'public')
+    if (watchingCount(path) === 0) return setVisibility(path, 'private')
+    setConfirmPrivatePath(path)
+  }
+
+  function confirmGoPrivate(viewers: ViewerAction) {
+    if (!confirmPrivatePath) return
+    setConfirmPrivatePath(null)
+    return setVisibility(confirmPrivatePath, 'private', viewers)
   }
 
   function respondToRequest(req: PendingRequest, action: 'approve' | 'deny') {
@@ -283,7 +311,7 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
         method: 'DELETE',
       }),
     )
-    if (kicked) logEvent('leave', 'kicked by streamer', viewerLabel(viewer))
+    if (kicked) logEvent('leave', 'kicked by streamer', viewer)
     else kickedViewers.current.delete(viewer.id)
   }
 
@@ -320,13 +348,59 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
         }}
       >
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-          <Typography sx={{ fontWeight: 700, fontSize: 14, letterSpacing: '0.02em' }}>
-            DiscordMTX
-          </Typography>
+          {livePaths.length > 1 ? (
+            <Select
+              variant="standard"
+              disableUnderline
+              value={currentPath ?? ''}
+              onChange={(e) => setSelectedPath(e.target.value)}
+              renderValue={(p) => `/${p}`}
+              title="Switch which stream the dock shows"
+              sx={{ ...headerTitleSx, fontFamily: 'monospace' }}
+            >
+              {livePaths.map((p) => {
+                const viewers = watchingCount(p)
+                const pending = allPending.filter((r) => r.path === p).length
+                return (
+                  <MenuItem key={p} value={p} sx={{ gap: 1.5, fontSize: 12 }}>
+                    <Box component="span" sx={{ fontFamily: 'monospace', flexGrow: 1 }}>
+                      /{p}
+                    </Box>
+                    <Box component="span" sx={{ fontSize: 10, color: 'text.secondary' }}>
+                      {viewers} watching
+                    </Box>
+                    {pending > 0 && (
+                      <Box
+                        component="span"
+                        sx={{ fontSize: 10, fontWeight: 700, color: 'warning.light' }}
+                      >
+                        {pending} pending
+                      </Box>
+                    )}
+                  </MenuItem>
+                )
+              })}
+            </Select>
+          ) : (
+            <Typography
+              noWrap
+              sx={[headerTitleSx, !!currentPath && { fontFamily: 'monospace' }]}
+            >
+              {currentPath ? `/${currentPath}` : 'DiscordMTX'}
+            </Typography>
+          )}
           <StatusPill live={status === 'live'} label={statusLabel} />
         </Stack>
         <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
           <AccentPicker size="small" sx={{ color: 'text.secondary' }} />
+          <IconButton
+            size="small"
+            onClick={() => setLogsOpen(true)}
+            title="Show recent viewer activity"
+            sx={{ color: 'text.secondary' }}
+          >
+            <ScrollText size={16} />
+          </IconButton>
           <Button
             size="small"
             variant={soundEnabled ? 'outlined' : 'contained'}
@@ -345,9 +419,7 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
         </Stack>
       </Box>
 
-      <SectionHeader
-        title={`Current Viewer Password${currentPath ? ` (/${currentPath})` : ''}`}
-      />
+      <SectionHeader title="Current Viewer Password" />
       <Card
         sx={{
           display: 'flex',
@@ -370,7 +442,7 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
             size="small"
             onClick={rotatePassword}
             disabled={!currentPath || busy === 'password'}
-            title="Rotate viewer password for the currently streaming path"
+            title="Rotate the viewer password for this stream"
             sx={smallButtonSx}
           >
             <RefreshCw size={12} />
@@ -387,41 +459,37 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
         </Stack>
       </Card>
 
-      <Card sx={{ px: 1.5, py: 1, mb: 1.5 }}>
-        <Typography variant="overline" color="text.secondary" sx={{ fontSize: 11 }}>
-          Active Viewers
-        </Typography>
-        <Typography sx={{ fontSize: 20, fontWeight: 700, color: 'success.main', lineHeight: 1.2 }}>
-          {readers.length}
-        </Typography>
-      </Card>
-
       <SectionHeader title="Stream Access" />
       <List>
-        {availablePaths.length === 0 ? (
-          <EmptyRow>No paths configured</EmptyRow>
+        {!currentPath ? (
+          <EmptyRow>No active stream</EmptyRow>
         ) : (
-          availablePaths.map((p) => {
-            const visibility = visibilities[p] ?? 'private'
-            const isPrivate = visibility === 'private'
-            return (
-              <Row key={p}>
-                <Typography sx={{ fontFamily: 'monospace', fontSize: 12, color: 'primary.light' }}>
-                  /{p}
-                </Typography>
-                <Chip
-                  size="small"
-                  clickable
-                  onClick={() => toggleVisibility(p)}
-                  disabled={busy === `visibility:${p}`}
-                  title="Toggle between public (anyone can join) and private (streamer approves each viewer)"
-                  icon={isPrivate ? <Lock size={12} /> : <Globe size={12} />}
-                  label={isPrivate ? 'Private' : 'Public'}
-                  sx={tintedChipSx(isPrivate ? 'warning' : 'success')}
-                />
-              </Row>
-            )
-          })
+          <Row>
+            <Stack
+              direction="row"
+              spacing={0.75}
+              sx={{
+                alignItems: 'center',
+                fontSize: 11,
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                color: 'text.secondary',
+              }}
+            >
+              {isPublic ? <Globe size={12} /> : <Lock size={12} />}
+              <span>{isPublic ? 'Public' : 'Private'}</span>
+              <Box component="span" sx={{ fontWeight: 400, textTransform: 'none' }}>
+                {isPublic ? 'anyone can join' : 'you approve each viewer'}
+              </Box>
+            </Stack>
+            <Switch
+              size="small"
+              checked={!isPublic}
+              onChange={() => toggleVisibility(currentPath)}
+              disabled={busy === `visibility:${currentPath}`}
+              slotProps={{ input: { 'aria-label': `Make /${currentPath} private` } }}
+            />
+          </Row>
         )}
       </List>
 
@@ -435,208 +503,254 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
           )
         }
       />
-      <List scroll>
-        {pendingRequests.length === 0 ? (
-          <EmptyRow>No pending requests</EmptyRow>
-        ) : (
-          pendingRequests.map((req) => {
-            const requestKey = requestKeyOf(req)
-            return (
-              <Row key={requestKey}>
-                <Stack direction="row" spacing={1} sx={{ alignItems: 'center', minWidth: 0 }}>
-                  <SmallAvatar image={req.image} fallback={req.name || req.ip} />
-                  <Box sx={{ minWidth: 0 }}>
-                    <Typography noWrap sx={{ fontSize: 12, fontWeight: 600, color: 'primary.light' }}>
-                      {req.name ?? req.ip}
-                    </Typography>
-                    <Typography sx={{ fontSize: 10, color: 'text.secondary' }}>
-                      wants to join <strong>/{req.path}</strong>
-                    </Typography>
-                  </Box>
-                </Stack>
-                <Stack direction="row" spacing={0.75} sx={{ flexShrink: 0 }}>
-                  <Button
-                    size="small"
-                    onClick={() => respondToRequest(req, 'approve')}
-                    disabled={busy === `request:${requestKey}`}
-                    sx={tintedButtonSx('success')}
-                  >
-                    Approve
-                  </Button>
-                  <Button
-                    size="small"
-                    onClick={() => respondToRequest(req, 'deny')}
-                    disabled={busy === `request:${requestKey}`}
-                    sx={tintedButtonSx('error')}
-                  >
-                    Deny
-                  </Button>
-                </Stack>
-              </Row>
-            )
-          })
-        )}
-      </List>
+      <SearchField value={pendingQuery} onChange={setPendingQuery} />
+      <VirtualList
+        items={filteredPending}
+        getKey={requestKeyOf}
+        empty={pendingQuery ? 'No matching requests' : 'No pending requests'}
+        renderItem={(req) => {
+          const requestKey = requestKeyOf(req)
+          return (
+            <Row as="div">
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', minWidth: 0 }}>
+                <SmallAvatar image={req.image} fallback={req.name || req.ip} />
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography noWrap sx={{ fontSize: 12, fontWeight: 600, color: 'primary.light' }}>
+                    {req.name ?? req.ip}
+                  </Typography>
+                  <Typography sx={{ fontSize: 10, color: 'text.secondary' }}>
+                    {req.name && <>{req.ip} · </>}
+                    wants to join <strong>/{req.path}</strong>
+                  </Typography>
+                </Box>
+              </Stack>
+              <Stack direction="row" spacing={0.75} sx={{ flexShrink: 0 }}>
+                <Button
+                  size="small"
+                  onClick={() => respondToRequest(req, 'approve')}
+                  disabled={busy === `request:${requestKey}`}
+                  sx={tintedButtonSx('success')}
+                >
+                  Approve
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() => respondToRequest(req, 'deny')}
+                  disabled={busy === `request:${requestKey}`}
+                  sx={tintedButtonSx('error')}
+                >
+                  Deny
+                </Button>
+              </Stack>
+            </Row>
+          )
+        }}
+      />
 
       <SectionHeader
         title="Current Viewers"
         extra={
-          <Box component="span" sx={{ fontSize: 10, opacity: 0.7, textTransform: 'none' }}>
-            live
-          </Box>
+          readers.length > 0 && (
+            <Box component="span" sx={{ fontSize: 10, fontWeight: 700, color: 'success.main' }}>
+              {readers.length}
+            </Box>
+          )
         }
       />
-      <List scroll>
-        {readers.length === 0 ? (
-          <EmptyRow>No viewers connected</EmptyRow>
-        ) : (
-          readers.map((r) => (
-            <Row key={r.id}>
-              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', minWidth: 0 }}>
-                {r.image ? (
-                  <AvatarPreview
-                    image={r.image}
-                    name={viewerLabel(r)}
-                    sx={{ display: 'flex', flexShrink: 0, cursor: 'zoom-in' }}
-                  >
-                    <SmallAvatar image={r.image} fallback="G" />
-                  </AvatarPreview>
-                ) : (
-                  <SmallAvatar image={null} fallback={r.name || 'G'} />
-                )}
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography noWrap sx={{ fontSize: 12, fontWeight: 600, color: 'primary.light' }}>
-                    {viewerLabel(r)}
-                  </Typography>
-                  {r.discordName && (
-                    <Stack
-                      direction="row"
-                      spacing={0.5}
-                      sx={{ alignItems: 'center', fontSize: 10, color: 'discord.light' }}
-                    >
-                      {r.discordImage && (
-                        <Avatar
-                          src={r.discordImage}
-                          alt=""
-                          slotProps={{ img: { referrerPolicy: 'no-referrer' } }}
-                          sx={{ width: 12, height: 12 }}
-                        />
-                      )}
-                      <span>Discord: {r.discordName}</span>
-                    </Stack>
-                  )}
-                  <Typography sx={{ fontSize: 10, color: 'text.secondary' }}>
-                    {(r.role !== 'discord' || r.hasPony) &&
-                      r.ip && <>{r.ip} · </>}
-                    Path: <strong>{r.path || 'default'}</strong>
-                  </Typography>
-                </Box>
-              </Stack>
-              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexShrink: 0 }}>
-                <Stack
-                  spacing={0.25}
-                  sx={{ alignItems: 'flex-end', fontSize: 11, color: 'text.secondary' }}
+      <SearchField value={viewerQuery} onChange={setViewerQuery} />
+      <VirtualList
+        items={filteredReaders}
+        getKey={(r) => r.id}
+        empty={viewerQuery ? 'No matching viewers' : 'No viewers connected'}
+        last
+        renderItem={(r) => (
+          <Row as="div">
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', minWidth: 0 }}>
+              {r.image ? (
+                <AvatarPreview
+                  image={r.image}
+                  name={viewerLabel(r)}
+                  sx={{ display: 'flex', flexShrink: 0, cursor: 'zoom-in' }}
                 >
-                  <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
-                    <Clock size={12} /> <span>{formatDuration(r.created, now)}</span>
-                  </Stack>
-                  <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
-                    <HardDrive size={12} /> <span>{formatBytes(r.bytesSent)}</span>
-                  </Stack>
-                </Stack>
-                {r.hasPony && (
-                  <IconButton
-                    size="small"
-                    onClick={() => rerollAvatar(r.id)}
-                    disabled={busy === `reroll:${r.id}`}
-                    title="Give this viewer a different pony picture"
-                    sx={tintedButtonSx('info')}
+                  <SmallAvatar image={r.image} fallback="G" />
+                </AvatarPreview>
+              ) : (
+                <SmallAvatar image={null} fallback={r.name || 'G'} />
+              )}
+              <Box sx={{ minWidth: 0 }}>
+                <Typography noWrap sx={{ fontSize: 12, fontWeight: 600, color: 'primary.light' }}>
+                  {viewerLabel(r)}
+                </Typography>
+                {r.discordName && (
+                  <Stack
+                    direction="row"
+                    spacing={0.5}
+                    sx={{ alignItems: 'center', fontSize: 10, color: 'discord.light' }}
                   >
-                    {busy === `reroll:${r.id}` ? (
-                      <CircularProgress size={12} color="inherit" />
-                    ) : (
-                      <Dices size={12} />
+                    {r.discordImage && (
+                      <Avatar
+                        src={r.discordImage}
+                        alt=""
+                        slotProps={{ img: { referrerPolicy: 'no-referrer' } }}
+                        sx={{ width: 12, height: 12 }}
+                      />
                     )}
-                  </IconButton>
+                    <span>Discord: {r.discordName}</span>
+                  </Stack>
                 )}
+                <Typography sx={{ fontSize: 10, color: 'text.secondary' }}>
+                  {r.ip && <>{r.ip} · </>}
+                  Path: <strong>{r.path || 'default'}</strong>
+                </Typography>
+              </Box>
+            </Stack>
+            <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexShrink: 0 }}>
+              {r.hasPony && (
                 <IconButton
                   size="small"
-                  onClick={() => kickViewer(r)}
-                  disabled={busy === `kick:${r.id}`}
-                  title="Kick this viewer"
-                  sx={tintedButtonSx('error')}
+                  onClick={() => rerollAvatar(r.id)}
+                  disabled={busy === `reroll:${r.id}`}
+                  title="Give this viewer a different pony picture"
+                  sx={tintedButtonSx('info')}
                 >
-                  <X size={12} />
+                  {busy === `reroll:${r.id}` ? (
+                    <CircularProgress size={12} color="inherit" />
+                  ) : (
+                    <Dices size={12} />
+                  )}
                 </IconButton>
-              </Stack>
-            </Row>
-          ))
+              )}
+              <IconButton
+                size="small"
+                onClick={() => kickViewer(r)}
+                disabled={busy === `kick:${r.id}`}
+                title="Kick this viewer"
+                sx={tintedButtonSx('error')}
+              >
+                <X size={12} />
+              </IconButton>
+            </Stack>
+          </Row>
         )}
-      </List>
-
-      <SectionHeader
-        title="Recent Activity"
-        extra={
-          <Link
-            component="button"
-            onClick={() => setEvents([])}
-            color="inherit"
-            sx={{ fontSize: 10, textTransform: 'none' }}
-          >
-            Clear
-          </Link>
-        }
       />
-      <List scroll last>
-        {events.length === 0 ? (
-          <EmptyRow>No recent activity</EmptyRow>
-        ) : (
-          events.map((e, i) => (
-            <Row key={i} dense>
-              <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', minWidth: 0 }}>
+
+      <Dialog
+        open={!!confirmPrivatePath}
+        onClose={() => setConfirmPrivatePath(null)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle sx={{ fontSize: 14, fontWeight: 700 }}>
+          Make /{confirmPrivatePath} private?
+        </DialogTitle>
+        <DialogContent>
+          <Typography sx={{ fontSize: 12, color: 'text.secondary', mb: 1.5 }}>
+            {confirmPrivateViewers === 1
+              ? '1 person is watching.'
+              : `${confirmPrivateViewers} people are watching.`}{' '}
+            New viewers will need your approval. What about the people already here?
+          </Typography>
+          <Stack spacing={0.75}>
+            <Button
+              onClick={() => confirmGoPrivate('approve')}
+              sx={[tintedButtonSx('success'), { py: 1 }]}
+            >
+              Approve all, keep them watching
+            </Button>
+            <Button
+              onClick={() => confirmGoPrivate('reapprove')}
+              sx={[tintedButtonSx('warning'), { py: 1 }]}
+            >
+              Make them request access again
+            </Button>
+            <Button
+              onClick={() => confirmGoPrivate('kick')}
+              sx={[tintedButtonSx('error'), { py: 1 }]}
+            >
+              Kick all
+            </Button>
+            <Button onClick={() => setConfirmPrivatePath(null)} sx={[smallButtonSx, { py: 1 }]}>
+              Cancel
+            </Button>
+          </Stack>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 1,
+            fontSize: 14,
+            fontWeight: 700,
+          }}
+        >
+          Recent Activity{currentPath ? ` · /${currentPath}` : ''}
+          <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+            <Button
+              size="small"
+              onClick={() => setEvents([])}
+              disabled={events.length === 0}
+              sx={smallButtonSx}
+            >
+              Clear
+            </Button>
+            <IconButton size="small" onClick={() => setLogsOpen(false)} title="Close" sx={smallButtonSx}>
+              <X size={12} />
+            </IconButton>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          <VirtualList
+            items={visibleEvents}
+            getKey={(e) => e.id}
+            empty="No recent activity"
+            estimateSize={34}
+            maxHeight="60vh"
+            last
+            renderItem={(e) => (
+              <Row as="div" dense>
+                <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', minWidth: 0 }}>
+                  <Box
+                    component="span"
+                    sx={{
+                      bgcolor: accentAlpha(0.15, e.type === 'join' ? 'success' : 'error'),
+                      color: e.type === 'join' ? 'success.light' : 'error.light',
+                      fontSize: 10,
+                      fontWeight: 600,
+                      px: 0.75,
+                      borderRadius: 0.5,
+                    }}
+                  >
+                    {e.type === 'join' ? 'JOIN' : 'LEAVE'}
+                  </Box>
+                  <Box component="span" sx={{ fontWeight: 600 }}>
+                    {e.viewer}
+                  </Box>
+                  <Box component="span" sx={{ fontSize: 10, color: 'text.secondary' }}>
+                    {e.text}
+                  </Box>
+                </Stack>
                 <Box
                   component="span"
-                  sx={[
-                    tintedChipSx(e.type === 'join' ? 'success' : 'error'),
-                    { fontSize: 10, fontWeight: 600, px: 0.75, borderRadius: 0.5 },
-                  ]}
+                  sx={{ fontFamily: 'monospace', fontSize: 10, color: 'text.secondary' }}
                 >
-                  {e.type === 'join' ? 'JOIN' : 'LEAVE'}
+                  {e.time}
                 </Box>
-                <Box component="span" sx={{ fontWeight: 600 }}>
-                  {e.viewer}
-                </Box>
-                <Box component="span" sx={{ fontSize: 10, color: 'text.secondary' }}>
-                  {e.text}
-                </Box>
-              </Stack>
-              <Box
-                component="span"
-                sx={{ fontFamily: 'monospace', fontSize: 10, color: 'text.secondary' }}
-              >
-                {e.time}
-              </Box>
-            </Row>
-          ))
-        )}
-      </List>
+              </Row>
+            )}
+          />
+        </DialogContent>
+      </Dialog>
     </Box>
   )
 }
 
 type Tone = 'success' | 'error' | 'warning' | 'info'
 
-function tintedChipSx(tone: Tone) {
-  return {
-    bgcolor: accentAlpha(0.15, tone),
-    color: `${tone}.light`,
-    fontWeight: 600,
-    fontSize: 11,
-    textTransform: 'uppercase',
-    '& .MuiChip-icon': { color: 'inherit', ml: 1 },
-    '&:hover': { bgcolor: accentAlpha(0.25, tone) },
-  } as const
-}
+const headerTitleSx = { fontWeight: 700, fontSize: 14, letterSpacing: '0.02em' } as const
 
 function tintedButtonSx(tone: Tone) {
   return {
@@ -765,10 +879,18 @@ function List({
   )
 }
 
-function Row({ dense, children }: { dense?: boolean; children: ReactNode }) {
+function Row({
+  dense,
+  as = 'li',
+  children,
+}: {
+  dense?: boolean
+  as?: 'li' | 'div'
+  children: ReactNode
+}) {
   return (
     <Paper
-      component="li"
+      component={as}
       variant="outlined"
       sx={{
         bgcolor: 'background.default',
@@ -784,6 +906,111 @@ function Row({ dense, children }: { dense?: boolean; children: ReactNode }) {
     >
       {children}
     </Paper>
+  )
+}
+
+function SearchField({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <TextField
+      size="small"
+      fullWidth
+      placeholder="Search name, Discord or IP"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      slotProps={{
+        input: {
+          startAdornment: (
+            <InputAdornment position="start">
+              <Search size={14} />
+            </InputAdornment>
+          ),
+          endAdornment: value && (
+            <InputAdornment position="end">
+              <IconButton size="small" onClick={() => onChange('')} title="Clear search">
+                <X size={12} />
+              </IconButton>
+            </InputAdornment>
+          ),
+          sx: { fontSize: 12 },
+        },
+      }}
+      sx={{ mb: 0.75 }}
+    />
+  )
+}
+
+// Only the rows in view are mounted, so long viewer/request lists stay cheap.
+function VirtualList<T>({
+  items,
+  getKey,
+  renderItem,
+  empty,
+  estimateSize = 52,
+  maxHeight = 220,
+  last,
+}: {
+  items: T[]
+  getKey: (item: T) => string | number
+  renderItem: (item: T) => ReactNode
+  empty: string
+  estimateSize?: number
+  maxHeight?: number | string
+  last?: boolean
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => estimateSize,
+    getItemKey: (index) => getKey(items[index]),
+    gap: 6,
+  })
+
+  if (items.length === 0) {
+    return (
+      <List last={last}>
+        <EmptyRow>{empty}</EmptyRow>
+      </List>
+    )
+  }
+
+  return (
+    <Box ref={scrollRef} sx={{ maxHeight, overflowY: 'auto', mb: last ? 0 : 1.5 }}>
+      <Box
+        component="ul"
+        sx={{
+          listStyle: 'none',
+          m: 0,
+          p: 0,
+          position: 'relative',
+          height: virtualizer.getTotalSize(),
+        }}
+      >
+        {virtualizer.getVirtualItems().map((item) => (
+          <Box
+            component="li"
+            key={item.key}
+            data-index={item.index}
+            ref={virtualizer.measureElement}
+            sx={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              transform: `translateY(${item.start}px)`,
+            }}
+          >
+            {renderItem(items[item.index])}
+          </Box>
+        ))}
+      </Box>
+    </Box>
   )
 }
 
