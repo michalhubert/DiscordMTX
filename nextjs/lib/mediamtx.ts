@@ -1,5 +1,5 @@
 function mediamtxHost(): string {
-  return process.env.MEDIAMTX_HOST ?? "discordmtx";
+  return process.env.MEDIAMTX_HOST ?? "mtxcord-media";
 }
 
 export function mediamtxApiBase(): string {

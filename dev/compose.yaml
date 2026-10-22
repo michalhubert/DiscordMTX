@@ -1,9 +1,9 @@
 services:
-  discordmtx:
+  mtxcord-media:
     build:
       context: ../mediamtx
       dockerfile: Dockerfile
-    container_name: discordmtx
+    container_name: mtxcord-media
     restart: unless-stopped
 
     user: "1200:1200" # Change to any user that has access to volume files or remove to run as root
@@ -20,9 +20,9 @@ services:
       HOOK_OFFLINE: ${HOOK_OFFLINE:-/hooks/stream-offline.sh}
       # Runs when a viewer starts/stops watching; empty turns it off
       HOOK_VIEWER: ${HOOK_VIEWER-/hooks/stream-viewer.sh}
-      # Where the hooks reach Next.js; change if you rename the nextjs service or run it elsewhere
-      NEXTJS_URL: ${NEXTJS_URL:-http://nextjs:3000}
-      # Sent by the hooks to Next.js; must match the nextjs service
+      # Where the hooks reach Next.js; change if you rename the mtxcord-web service or run it elsewhere
+      NEXTJS_URL: ${NEXTJS_URL:-http://mtxcord-web:3000}
+      # Sent by the hooks to Next.js; must match the mtxcord-web service
       HOOK_SECRET: ${HOOK_SECRET:-${NEXTAUTH_SECRET:?Set NEXTAUTH_SECRET}}
       # MediaMTX's UDP read buffer size (bytes). MediaMTX docs recommend
       # raising this to avoid dropped WebRTC/RTP packets under load.
@@ -42,19 +42,19 @@ services:
     networks:
       - stream
 
-  nextjs:
+  mtxcord-web:
     build:
       context: ../nextjs
       dockerfile: Dockerfile
-    container_name: discordmtx-nextjs
+    container_name: mtxcord-web
     restart: unless-stopped
 
     environment:
-      MEDIAMTX_HOST: ${MEDIAMTX_HOST:-discordmtx}
+      MEDIAMTX_HOST: ${MEDIAMTX_HOST:-mtxcord-media}
       MEDIAMTX_PORT: ${MEDIAMTX_PORT:-8889}
       MEDIAMTX_API_PORT: ${MEDIAMTX_API_PORT:-9997}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?Set NEXTAUTH_SECRET, e.g. openssl rand -hex 32}
-      # Checked on MediaMTX's stream hook; must match the discordmtx service
+      # Checked on MediaMTX's stream hook; must match the mtxcord-media service
       HOOK_SECRET: ${HOOK_SECRET:-${NEXTAUTH_SECRET:?Set NEXTAUTH_SECRET}}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-}
       # Header your reverse proxy puts the client's IP in, e.g. cf-connecting-ip (see README)
@@ -89,7 +89,7 @@ services:
       - "${NEXTJS_PORT:-8080}:3000"
 
     depends_on:
-      - discordmtx
+      - mtxcord-media
 
     networks:
       - stream

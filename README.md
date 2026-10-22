@@ -1,4 +1,4 @@
-# DiscordMTX
+# MTXcord
 
 [![Docker](https://img.shields.io/badge/Docker-required-blue?logo=docker)](https://www.docker.com/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -39,8 +39,8 @@ FFmpeg transcoding may be added in the future.
 Clone the repository:
 
 ```bash
-git clone https://github.com/michalhubert/DiscordMTX.git
-cd DiscordMTX
+git clone https://github.com/michalhubert/MTXcord.git
+cd MTXcord
 ```
 
 Create a `.env` file:
@@ -109,11 +109,11 @@ docker compose down
 | `UDP_READ_BUFFER_SIZE`    | MediaMTX UDP read buffer in bytes (default `1000000`), see [UDP Buffer Tuning](#udp-buffer-tuning-webrtc-packet-loss) |
 | `HOOK_ONLINE` / `HOOK_OFFLINE` / `HOOK_ONLINE_RESTART` | Default stream hooks, see [Hooks](#hooks) |
 | `HOOK_VIEWER`             | Hook run when a viewer starts/stops watching (default `/hooks/stream-viewer.sh`; set empty to turn off), see [Hooks](#hooks) |
-| `NEXTJS_URL`              | Where the stream hooks reach Next.js from the discordmtx container (default `http://nextjs:3000`) |
+| `NEXTJS_URL`              | Where the stream hooks reach Next.js from the mtxcord-media container (default `http://mtxcord-web:3000`) |
 | `NEXTJS_PORT`             | Host port exposed by the Next.js frontend          |
-| `MEDIAMTX_HOST`           | Hostname/IP of the discordmtx service the Next.js WHEP/API proxy talks to |
-| `MEDIAMTX_PORT`           | Port of the discordmtx service the Next.js WHEP proxy talks to (default `8889`) |
-| `MEDIAMTX_API_PORT`       | Port of the discordmtx MediaMTX control API used by `/dock` (default `9997`) |
+| `MEDIAMTX_HOST`           | Hostname/IP of the mtxcord-media service the Next.js WHEP/API proxy talks to |
+| `MEDIAMTX_PORT`           | Port of the mtxcord-media service the Next.js WHEP proxy talks to (default `8889`) |
+| `MEDIAMTX_API_PORT`       | Port of the mtxcord-media MediaMTX control API used by `/dock` (default `9997`) |
 | `NEXTAUTH_SECRET`         | Required. Random secret used to sign Next.js session cookies; anyone who knows it can sign in as the streamer |
 | `HOOK_SECRET`             | Shared secret MediaMTX's stream hooks send to `/api/streams/hook` (defaults to `NEXTAUTH_SECRET`; set the same value on both services) |
 | `NEXTAUTH_URL`            | Public URL of the Next.js frontend                 |
@@ -232,7 +232,7 @@ Without a reverse proxy, clients can pick their own IP, so don't expose Next.js 
 
 The Next.js port can be changed with `NEXTJS_PORT`.
 
-MediaMTX's WebRTC signaling port `8889` (used for both OBS's WHIP ingest and the player's WHEP playback) is exposed to the host so OBS (running on the streamer's own machine, outside this stack's Docker network) can reach MediaMTX directly for WHIP publishing - see [Publishing with OBS Studio](#publishing-with-obs-studio) below. Browsers reach it indirectly instead: the Next.js frontend proxies the WHEP SDP signaling request (tiny, low-frequency) to `discordmtx:8889` after checking the viewer's session, while the actual RTP media always flows directly between the browser and MediaMTX over UDP `8189`, so no extra latency is added to the stream itself. The upstream hostname/port used by the proxy can be changed with `MEDIAMTX_HOST`/`MEDIAMTX_PORT` (defaults to `discordmtx:8889`).
+MediaMTX's WebRTC signaling port `8889` (used for both OBS's WHIP ingest and the player's WHEP playback) is exposed to the host so OBS (running on the streamer's own machine, outside this stack's Docker network) can reach MediaMTX directly for WHIP publishing - see [Publishing with OBS Studio](#publishing-with-obs-studio) below. Browsers reach it indirectly instead: the Next.js frontend proxies the WHEP SDP signaling request (tiny, low-frequency) to `mtxcord-media:8889` after checking the viewer's session, while the actual RTP media always flows directly between the browser and MediaMTX over UDP `8189`, so no extra latency is added to the stream itself. The upstream hostname/port used by the proxy can be changed with `MEDIAMTX_HOST`/`MEDIAMTX_PORT` (defaults to `mtxcord-media:8889`).
 
 ## MediaMTX
 
@@ -334,7 +334,7 @@ HOOK_OFFLINE=/hooks/stream-offline.sh
 HOOK_VIEWER=/hooks/stream-viewer.sh
 ```
 
-MediaMTX runs the online hook when the stream starts and the offline hook when it stops. It runs the viewer hook (with `read` or `unread`) whenever someone starts or stops watching, so the dock's viewer list updates at once. All hooks call the Next.js app's `/api/streams/hook` endpoint at `NEXTJS_URL` (default `http://nextjs:3000`, the compose service name, so changing `container_name` doesn't break it; set it if you rename the service or run Next.js elsewhere). They authenticate with `HOOK_SECRET`, which must be the same on both services. The endpoint - besides initializing/clearing access sessions - owns the Discord webhook message for that path (`lib/discordWebhook.ts`): it posts one message when the stream first goes online, then edits that same message in place on every subsequent online/offline transition instead of posting a new one each time. The message id is persisted in the SQLite database, so edits keep working across restarts, and if the stored message was deleted manually (or the webhook URL changed), a fresh message is posted and tracked instead.
+MediaMTX runs the online hook when the stream starts and the offline hook when it stops. It runs the viewer hook (with `read` or `unread`) whenever someone starts or stops watching, so the dock's viewer list updates at once. All hooks call the Next.js app's `/api/streams/hook` endpoint at `NEXTJS_URL` (default `http://mtxcord-web:3000`, the compose service name, so changing `container_name` doesn't break it; set it if you rename the service or run Next.js elsewhere). They authenticate with `HOOK_SECRET`, which must be the same on both services. The endpoint - besides initializing/clearing access sessions - owns the Discord webhook message for that path (`lib/discordWebhook.ts`): it posts one message when the stream first goes online, then edits that same message in place on every subsequent online/offline transition instead of posting a new one each time. The message id is persisted in the SQLite database, so edits keep working across restarts, and if the stored message was deleted manually (or the webhook URL changed), a fresh message is posted and tracked instead.
 
 Viewer passwords are stored per-path in the SQLite database and can be rotated via the streamer dock (/dock). When a password is rotated, all existing viewer sessions are invalidated and viewers must re-login with the new password. The player URL posted to Discord never contains credentials - viewers enter the password on the Next.js login page.
 
@@ -344,7 +344,7 @@ The Next.js app resolves the Discord webhook to use for the current path from th
 
 A private streamer dashboard is available at `/dock` in the Next.js frontend, gated by its own login (`STREAMER_PASSWORD`) - separate from both the Discord login and the per-stream viewer password, so viewers can never reach it.
 
-The Next.js app reads MediaMTX's control API (`discordmtx:9997/v3/`) for it and pushes the dock everything it shows (see [Live updates](#live-updates)).
+The Next.js app reads MediaMTX's control API (`mtxcord-media:9997/v3/`) for it and pushes the dock everything it shows (see [Live updates](#live-updates)).
 
 Features:
 * Live viewer count and stream status (Live / Offline)
@@ -392,11 +392,17 @@ Available settings, adjustable per-stream and optionally saved for next time:
 * **Degradation preference** - when bandwidth/CPU can't keep up, whether the encoder should drop resolution to keep the framerate smooth (`maintain-framerate`, the default - usually fixes stutter), drop framerate to keep resolution sharp (`maintain-resolution`), or balance both
 * **Audio** - whether to include system/tab audio, and its target bitrate; if the browser/OS can't provide audio for the chosen source, the stream automatically falls back to video-only instead of failing to start. If audio capture fails with a "Could not start audio source" error, a virtual surround sound effect on your headphones/audio device is a common cause - try disabling it.
 
-Saved settings are stored in a small SQLite database inside the Next.js container, always at the fixed path `/data/sqlite/discordmtx.db`; mount `/data` as a volume (already done in the provided `docker-compose.yaml`, mapped to `./config`, so the database ends up in `config/sqlite`) to persist them across restarts. A database left at `config/discordmtx.db` by an older version is moved there automatically on startup.
+Saved settings are stored in a small SQLite database inside the Next.js container, always at the fixed path `/data/sqlite/mtxcord.db`; mount `/data` as a volume (already done in the provided `docker-compose.yaml`, mapped to `./config`, so the database ends up in `config/sqlite`) to persist them across restarts. A database left at `config/discordmtx.db` or `config/sqlite/discordmtx.db` by an older (DiscordMTX) version is moved there automatically on startup.
 
 Because everything runs in the browser, resolution and framerate are no longer forced to a single global setting like they are in OBS - the browser panel captures at whatever the source natively provides (or a fixed size you choose), independently from anything else running on the machine.
 
 Under the hood, the panel also applies a few other WebRTC tuning options: `bundlePolicy: "max-bundle"` and a small ICE candidate pool for a faster initial connection, `maxFramerate`/`priority`/`networkPriority` on the video encoding, and disabled Opus DTX with in-band FEC enabled on the audio track.
+
+## Upgrading from DiscordMTX
+
+The project was renamed from DiscordMTX to MTXcord. The images, compose services and containers are now `mtxcord-media` (MediaMTX, was `discordmtx`) and `mtxcord-web` (Next.js, was `discordmtx-nextjs` / `nextjs`); the old images on Docker Hub no longer get updates. To upgrade, take the new `docker-compose.yaml` (or rename the services and images in yours), run `docker compose up -d --remove-orphans`, and update `NEXTJS_URL`/`MEDIAMTX_HOST` if you set them to the old service names.
+
+The SQLite database is moved to `config/sqlite/mtxcord.db` automatically, and viewers keep their saved player and accent settings.
 
 ## Development
 

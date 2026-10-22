@@ -155,7 +155,7 @@ async function fetchPool(
     const res = await fetch(`${DERPIBOORU_SEARCH}?${params}`, {
       headers: {
         Accept: 'application/json',
-        'User-Agent': 'DiscordMTX guest avatars',
+        'User-Agent': 'MTXcord guest avatars',
       },
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       cache: 'no-store',

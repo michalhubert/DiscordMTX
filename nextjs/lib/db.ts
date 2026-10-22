@@ -2,33 +2,33 @@
 
 import Database from 'better-sqlite3'
 import { existsSync, mkdirSync, renameSync } from 'fs'
-import { dirname, join } from 'path'
+import { dirname } from 'path'
 
 import { DEFAULT_STREAM_SETTINGS, type StreamSettings } from './streamSettings'
 
 export * from './streamSettings'
 export type PathVisibility = 'public' | 'private'
 
-const DB_PATH = '/data/sqlite/discordmtx.db'
-// Where the database was when /data/sqlite itself was the volume, i.e. at the
-// root of the mounted folder now that /data is.
-const LEGACY_DB_PATH = '/data/discordmtx.db'
+const DB_PATH = '/data/sqlite/mtxcord.db'
+// Where the database was before the DiscordMTX -> MTXcord rename, and before
+// that when /data/sqlite itself was the volume, i.e. at the root of the
+// mounted folder now that /data is.
+const LEGACY_DB_PATHS = ['/data/sqlite/discordmtx.db', '/data/discordmtx.db']
 
 function moveLegacyDb(): void {
-  if (existsSync(DB_PATH) || !existsSync(LEGACY_DB_PATH)) return
+  if (existsSync(DB_PATH)) return
+  const legacyPath = LEGACY_DB_PATHS.find((path) => existsSync(path))
+  if (!legacyPath) return
   try {
     for (const suffix of ['', '-wal', '-shm']) {
-      if (existsSync(LEGACY_DB_PATH + suffix)) {
-        renameSync(
-          LEGACY_DB_PATH + suffix,
-          join(dirname(DB_PATH), `discordmtx.db${suffix}`),
-        )
+      if (existsSync(legacyPath + suffix)) {
+        renameSync(legacyPath + suffix, DB_PATH + suffix)
       }
     }
-    console.log(`Moved the database from ${LEGACY_DB_PATH} to ${DB_PATH}`)
+    console.log(`Moved the database from ${legacyPath} to ${DB_PATH}`)
   } catch (err) {
     console.error(
-      `Failed to move the database from ${LEGACY_DB_PATH} to ${DB_PATH}:`,
+      `Failed to move the database from ${legacyPath} to ${DB_PATH}:`,
       err,
     )
   }

@@ -32,7 +32,7 @@ export default async function Home() {
           <Satellite size={28} />
         </Typography>
         <Typography variant="h5" component="h1" sx={{ fontWeight: 600 }}>
-          DiscordMTX
+          MTXcord
         </Typography>
       </Stack>
       <Typography variant="body2" color="text.secondary">

@@ -40,8 +40,8 @@ jobs:
             nextjs:
               - 'nextjs/**'
 
-  # 2. Build backend
-  build-discordmtx:
+  # 2. Build media server
+  build-media:
     needs: detect-changes
     # Run if backend files or this workflow changed, OR if it's a tag, OR if manually dispatched
     if: |
@@ -72,7 +72,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.REGISTRY }}/${{ vars.DOCKERHUB_USERNAME }}/discordmtx
+          images: ${{ env.REGISTRY }}/${{ vars.DOCKERHUB_USERNAME }}/mtxcord-media
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -90,8 +90,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # 3. Build frontend
-  build-nextjs:
+  # 3. Build web app
+  build-web:
     needs: detect-changes
     if: |
       needs.detect-changes.outputs.nextjs == 'true' ||
@@ -121,7 +121,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.REGISTRY }}/${{ vars.DOCKERHUB_USERNAME }}/discordmtx-nextjs
+          images: ${{ env.REGISTRY }}/${{ vars.DOCKERHUB_USERNAME }}/mtxcord-web
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}

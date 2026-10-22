@@ -42,7 +42,7 @@ export default function LoginShell({
             component="h1"
             sx={{ fontWeight: 600, flex: 1, letterSpacing: '-0.01em' }}
           >
-            DiscordMTX{isStreamerMode ? ' — Streamer' : ''}
+            MTXcord{isStreamerMode ? ' — Streamer' : ''}
           </Typography>
           <AccentPicker size="small" sx={{ color: 'text.secondary' }} />
         </Stack>

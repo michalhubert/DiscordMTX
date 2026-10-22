@@ -4,6 +4,13 @@ export const DEFAULT_ACCENT = '#ef4444'
 export type AccentScope = 'viewer' | 'studio'
 
 export const ACCENT_COOKIES: Record<AccentScope, string> = {
+  viewer: 'mtxcord-accent',
+  studio: 'mtxcord-studio-accent',
+}
+
+// Names from before the DiscordMTX -> MTXcord rename, read until the browser
+// rewrites the accent under the current name.
+export const LEGACY_ACCENT_COOKIES: Record<AccentScope, string> = {
   viewer: 'discordmtx-accent',
   studio: 'discordmtx-studio-accent',
 }

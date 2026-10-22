@@ -386,7 +386,7 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
               noWrap
               sx={[headerTitleSx, !!currentPath && { fontFamily: 'monospace' }]}
             >
-              {currentPath ? `/${currentPath}` : 'DiscordMTX'}
+              {currentPath ? `/${currentPath}` : 'MTXcord'}
             </Typography>
           )}
           <StatusPill live={status === 'live'} label={statusLabel} />

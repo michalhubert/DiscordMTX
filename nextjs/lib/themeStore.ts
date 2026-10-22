@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { adoptLegacyStorageKey } from './legacyStorage'
 import { usePathname } from 'next/navigation'
 import { accentScopeFor, DEFAULT_ACCENT, type AccentScope } from './theme'
 
@@ -39,7 +40,7 @@ export const useThemeStore = create<ThemeState>()(
         set({ avatarAccentAvailable }),
     }),
     {
-      name: 'discordmtx-theme',
+      name: adoptLegacyStorageKey('mtxcord-theme', 'discordmtx-theme'),
       partialize: ({ accentMode, customAccent, avatarAccent, studioAccent }) => ({
         accentMode,
         customAccent,
