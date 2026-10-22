@@ -70,6 +70,7 @@ export async function GET(
     name: user.role === 'discord' ? user.name : null,
     image: user.role === 'discord' ? user.image : null,
     discordId,
+    clientIp: ip,
   }
 
   // In case a hook was missed.

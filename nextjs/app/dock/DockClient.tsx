@@ -222,7 +222,7 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
   const readers = allReaders.filter((r) => onCurrentPath(r.path))
   const visibleEvents = events.filter((e) => onCurrentPath(e.path))
   const filteredPending = pendingRequests.filter((r) =>
-    matchesQuery(pendingQuery, r.name, r.ip),
+    matchesQuery(pendingQuery, r.name, r.clientIp),
   )
   const filteredReaders = readers.filter((r) =>
     matchesQuery(viewerQuery, r.name, r.discordName, r.ip),
@@ -513,13 +513,13 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
           return (
             <Row as="div">
               <Stack direction="row" spacing={1} sx={{ alignItems: 'center', minWidth: 0 }}>
-                <SmallAvatar image={req.image} fallback={req.name || req.ip} />
+                <SmallAvatar image={req.image} fallback={req.name || req.clientIp || 'Guest'} />
                 <Box sx={{ minWidth: 0 }}>
                   <Typography noWrap sx={{ fontSize: 12, fontWeight: 600, color: 'primary.light' }}>
-                    {req.name ?? req.ip}
+                    {req.name ?? req.clientIp ?? 'Guest'}
                   </Typography>
                   <Typography sx={{ fontSize: 10, color: 'text.secondary' }}>
-                    {req.name && <>{req.ip} · </>}
+                    {req.name && req.clientIp && <>{req.clientIp} · </>}
                     wants to join <strong>/{req.path}</strong>
                   </Typography>
                 </Box>
