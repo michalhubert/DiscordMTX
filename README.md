@@ -260,13 +260,13 @@ If OBS reports "Could not access the specified channel or stream key" (or simila
 
 ### Dynamic Path Configuration
 
-You can configure multiple paths by creating a `paths.yml` file in the project root. Copy the example:
+You can configure multiple paths by creating a `paths.yml` file in the `mediamtx/` folder. Copy the example:
 
 ```bash
-cp paths.yml.example paths.yml
+cp mediamtx/paths.yml.example mediamtx/paths.yml
 ```
 
-Edit `paths.yml` to define your paths:
+Edit `mediamtx/paths.yml` to define your paths:
 
 ```yaml
 paths:
@@ -297,7 +297,7 @@ Because path names are mapped to MediaMTX's `MTX_PATHS_<NAME>_*` environment var
 MediaMTX configuration:
 
 ```text
-mediamtx.yml
+mediamtx/mediamtx.yml
 ```
 
 Only WebRTC is enabled (WHIP for publishing, WHEP for playback); MediaMTX's RTSP, RTMP, HLS, SRT and MoQ servers are turned off in `mediamtx.yml`.
@@ -322,7 +322,7 @@ To persist this across reboots, add `net.core.rmem_max=100000000` to `/etc/sysct
 Stream hooks are located in:
 
 ```text
-hooks/
+mediamtx/hooks/
 ```
 
 Default configuration:
@@ -423,14 +423,15 @@ Keep in mind that HTTPS proxying and WebRTC are separate connections. Cloudflare
 .
 ├── .github/
 ├── dev/
-├── hooks/
+├── mediamtx/
+│   ├── hooks/
+│   ├── Dockerfile
+│   ├── entrypoint.sh
+│   ├── mediamtx.yml
+│   ├── paths.yml
+│   └── paths.yml.example
 ├── nextjs/
-├── Dockerfile
-├── docker-compose.yaml
-├── entrypoint.sh
-├── mediamtx.yml
-├── paths.yml
-└── paths.yml.example
+└── docker-compose.yaml
 ```
 
 ## License
