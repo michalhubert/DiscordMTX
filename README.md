@@ -5,40 +5,40 @@
 
 Made for personal streaming with whatever quality and framerate you want - no need to pay for Nitro just to get readable text and bearable stream quality.
 
-A small Docker Compose setup built around [MediaMTX](https://github.com/bluenviron/mediamtx) for direct, no-transcode WebRTC streaming. Bitrate, resolution, and framerate are fully controlled by the streaming application (e.g. OBS), with a Next.js viewer/auth frontend and Discord webhook hooks.
-
-FFmpeg transcoding may be added in the future.
+A small, self-hosted Docker Compose stack for direct, no-transcode WebRTC streaming to your friends. Bitrate, resolution and framerate are fully controlled by whatever you stream from (OBS or your browser), and you decide who gets to watch.
 
 ## Features
 
-* [MediaMTX](https://github.com/bluenviron/mediamtx) for streaming
-* WebRTC (WHIP ingest / WHEP playback) for low-latency streaming
-* Next.js frontend with a built-in WebRTC player and login gate
-* "Sign in with Discord" (real Discord OAuth2) for viewers
-* Per-stream viewer password for guests (non-Discord viewers), generated and rotated from the dock
-* Private streams by default: you approve each viewer from the dock, or switch a stream to public so anyone signed in can watch (see [Viewer access](#viewer-access))
+* Low-latency WebRTC streaming (WHIP in, WHEP out) through [MediaMTX](https://github.com/bluenviron/mediamtx), with no transcoding
+* Stream from OBS, or straight from the browser with the `/stream` panel - no OBS required
+* Viewers sign in with Discord, or as guests with a per-stream viewer password
+* Private streams by default: you approve each viewer, or switch a stream to public so anyone signed in can watch
 * Kick or deny viewers, with a timeout that grows on each repeat
-* Anonymous pony names and Derpibooru avatars for guests (see [Guest names and avatars](#guest-names-and-avatars))
-* Discord webhook notifications that edit a single message in place for online/offline events, instead of spamming a new message every stream
-* Private streamer HUD / OBS Custom Browser Dock (`/dock`), gated by its own password
-* In-browser desktop/app streaming panel (`/stream`) using WHIP + `getDisplayMedia`, no OBS required
-* Per-stream bitrate/codec/resolution/audio settings, saved to a small SQLite database
+* Anonymous pony names and Derpibooru avatars for guests
+* A streamer dashboard (`/dock`) that fits in OBS as a Custom Browser Dock: viewers, pending requests, password, public/private switch, activity log and join chimes
+* A Discord webhook message that's edited in place when you go online or offline, instead of a new message every stream
 * Live emoji reactions that float over the player for every viewer (buttons or keys `1`-`8`)
-* Toggleable "who's watching" overlay (button or `V`), with Discord avatars or guest ponies
-* Keyboard shortcuts on the player: `M` mute, `F` fullscreen; a viewer who refreshes starts muted and is unmuted on their first click or key press
-* Accent colour picker, either custom or taken from the viewer's avatar, with a separate one for the dock and `/stream`
+* A "who's watching" overlay (button or `V`), and `M`/`F` shortcuts for mute and fullscreen
 * Connection warnings for viewers (packet loss, stalls, high latency, freezes, dropped frames, going offline) plus a signal indicator with live stats
-* Everything updates live: kicks, approvals, the stream going on/offline, viewers joining and leaving reach every open page within milliseconds (see [Live updates](#live-updates))
-* Docker Compose deployment
+* An accent colour picker, either custom or taken from the viewer's avatar
+* Everything updates live: kicks, approvals, the stream going on/offline, viewers joining and leaving reach every open page within milliseconds
 
-## Requirements
+## How it fits together
 
-* Docker
-* Docker Compose
-* A domain pointing to the server
-* A Discord webhook if you want Discord notifications
+```text
+OBS / browser panel ──WHIP──▶ mtxcord-media (MediaMTX) ──WebRTC (UDP 8189)──▶ viewers' browsers
+                                     │  ▲                                          │
+                              hooks  │  │ WHEP signaling, control API              │ login, player, dock
+                                     ▼  │                                          ▼
+                              mtxcord-web (Next.js) ◀──────────────────────────────┘
+```
 
-## Setup
+* **[mtxcord-media](mediamtx/README.md)** runs MediaMTX: it takes your stream in and sends the video to viewers. Its hooks tell the web app when a stream goes online or offline and when viewers come and go.
+* **[mtxcord-web](nextjs/README.md)** is the Next.js app viewers and you actually open: login, the player, `/dock` and `/stream`. It checks each viewer's access before passing their WebRTC signaling on to MediaMTX; the video itself goes straight from MediaMTX to the browser.
+
+## Quick start
+
+Requirements: Docker with Docker Compose, a domain pointing to the server, and a reverse proxy for HTTPS (see [HTTPS](#https)).
 
 Clone the repository:
 
@@ -50,33 +50,19 @@ cd MTXcord
 Create a `.env` file:
 
 ```env
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
-PLAYER_DOMAIN=stream.example.com
-
-# Required. Also gates access to the /dock OBS HUD; use a long, random one
+# Required. Lets OBS publish, and signs you in to /dock; use a long, random one
 STREAMER_PASSWORD=
-
-WEBRTC_ADDITIONAL_HOSTS=192.168.1.100,203.0.113.10
-
-NEXTJS_PORT=8080
 # Required; generate one with: openssl rand -hex 32
 NEXTAUTH_SECRET=
-NEXTAUTH_URL=https://stream.example.com
-# Header your reverse proxy puts the client's IP in, see "Client IPs" below
-#CLIENT_IP_HEADER=x-forwarded-for
-# Optional, defaults to NEXTAUTH_SECRET
-#HOOK_SECRET=another-random-secret
 
-# Discord OAuth app (https://discord.com/developers/applications), lets viewers
-# sign in with their Discord account instead of the viewer password
+PLAYER_DOMAIN=stream.example.com
+NEXTAUTH_URL=https://stream.example.com
+WEBRTC_ADDITIONAL_HOSTS=192.168.1.100,203.0.113.10
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+
+# Optional: lets viewers sign in with Discord
 #DISCORD_CLIENT_ID=
 #DISCORD_CLIENT_SECRET=
-#NEXT_PUBLIC_DISCORD_ENABLED=false
-
-# Avatars for guests (non-Discord viewers), see "Guest names and avatars" below
-#GUEST_AVATAR_FILTER_ID=
-#GUEST_AVATAR_TAGS=
-#GUEST_PONY_NAMES_FILE=
 ```
 
 Start the stack:
@@ -85,337 +71,38 @@ Start the stack:
 docker compose up -d
 ```
 
-Viewers sign in on the Next.js login page, either with Discord (if `DISCORD_CLIENT_ID`/`DISCORD_CLIENT_SECRET` are configured) or with the stream's viewer password. There's no viewer password until you generate one in the dock (see [Viewer access](#viewer-access)).
+Then:
 
-Check the logs:
+1. Point OBS at `http://<server-address>:8889/default/whip` with the Bearer Token `streamer:<STREAMER_PASSWORD>` (see [Publishing with OBS Studio](mediamtx/README.md#publishing-with-obs-studio)), or open `/stream` to stream from the browser.
+2. Open `/dock`, sign in with `STREAMER_PASSWORD`, and generate a viewer password with the rotate button if you want guests (see [Viewer access](nextjs/README.md#viewer-access)).
+3. Share `https://stream.example.com/default` with your viewers.
 
-```bash
-docker compose logs -f
-```
-
-Stop the stack:
-
-```bash
-docker compose down
-```
+Check the logs with `docker compose logs -f` and stop the stack with `docker compose down`.
 
 ## Configuration
 
-| Variable                  | Description                                       |
-| ------------------------- | -------------------------------------------------- |
-| `DISCORD_WEBHOOK_URL`     | Default Discord webhook used for stream online/offline notifications |
-| `DISCORD_WEBHOOK_URLS`    | Optional per-path webhook overrides (see below)    |
-| `PLAYER_DOMAIN`           | Domain used for the generated player URL           |
-| `STREAMER_PASSWORD`       | Required. Password for the MediaMTX `streamer` user (OBS, and Next.js itself), and for the `/dock` OBS HUD |
-| `WEBRTC_TRUSTED_PROXIES`  | MediaMTX `webrtcTrustedProxies`, see [Trusted proxies](#trusted-proxies) |
-| `API_TRUSTED_PROXIES`     | MediaMTX `apiTrustedProxies`, see [Trusted proxies](#trusted-proxies) |
-| `WEBRTC_ADDITIONAL_HOSTS` | Addresses advertised to the WebRTC player          |
-| `UDP_READ_BUFFER_SIZE`    | MediaMTX UDP read buffer in bytes (default `1000000`), see [UDP Buffer Tuning](#udp-buffer-tuning-webrtc-packet-loss) |
-| `HOOK_ONLINE` / `HOOK_OFFLINE` / `HOOK_ONLINE_RESTART` | Default stream hooks, see [Hooks](#hooks) |
-| `HOOK_VIEWER`             | Hook run when a viewer starts/stops watching (default `/hooks/stream-viewer.sh`; set empty to turn off), see [Hooks](#hooks) |
-| `NEXTJS_URL`              | Where the stream hooks reach Next.js from the mtxcord-media container (default `http://mtxcord-web:3000`) |
-| `NEXTJS_PORT`             | Host port exposed by the Next.js frontend          |
-| `MEDIAMTX_HOST`           | Hostname/IP of the mtxcord-media service the Next.js WHEP/API proxy talks to |
-| `MEDIAMTX_PORT`           | Port of the mtxcord-media service the Next.js WHEP proxy talks to (default `8889`) |
-| `MEDIAMTX_API_PORT`       | Port of the mtxcord-media MediaMTX control API used by `/dock` (default `9997`) |
-| `NEXTAUTH_SECRET`         | Required. Random secret used to sign Next.js session cookies; anyone who knows it can sign in as the streamer |
-| `HOOK_SECRET`             | Shared secret MediaMTX's stream hooks send to `/api/streams/hook` (defaults to `NEXTAUTH_SECRET`; set the same value on both services) |
-| `NEXTAUTH_URL`            | Public URL of the Next.js frontend                 |
-| `DISCORD_CLIENT_ID`       | Discord OAuth application client ID                |
-| `DISCORD_CLIENT_SECRET`   | Discord OAuth application client secret            |
-| `NEXT_PUBLIC_DISCORD_ENABLED` | Set to `true` to show the "Sign in with Discord" button on the login page |
-| `DISABLE_DOCK_AUTH`       | Set to `true` to skip authentication on `/dock` and `/stream`. **Everyone who can reach the app then has full streamer control**, so only use it when the app isn't reachable from the internet |
-| `CLIENT_IP_HEADER`        | Header the reverse proxy puts the client's IP in (default `x-forwarded-for`), see [Client IPs](#client-ips) |
-| `DENIAL_TIMEOUTS`         | Comma-separated minutes a kicked or denied viewer is kept out, growing with each repeat kick or denial within an hour; the last value repeats (default `1,5,15`) |
-| `GUEST_AVATAR_FILTER_ID`  | Derpibooru filter used for guest avatars (optional, defaults to Derpibooru's default filter), see below |
-| `GUEST_AVATAR_TAGS`       | Extra Derpibooru tags every guest avatar must have (optional), see below |
-| `GUEST_PONY_NAMES_FILE`   | File with guest pony names replacing the built-in list (optional), see below |
+Everything is configured through the `.env` file next to `docker-compose.yaml`. Each service's README covers its own variables and features:
 
-### Guest names and avatars
+* **[Media server](mediamtx/README.md)**: OBS publishing, stream paths (`paths.yml`), ports, WebRTC hosts, trusted proxies, UDP tuning and hooks
+* **[Web app](nextjs/README.md)**: sign-in and viewer access, guest names and avatars, Discord webhooks, client IPs, the dock, the browser panel, live updates and the database
 
-Viewers who log in with the stream password get a pony name, e.g. *Fluttershy* or *DJ Pon-3*. On public streams, Discord viewers get one too, so everyone watching is anonymous to each other. The streamer dock shows each pony next to the viewer's IP and, for Discord viewers, their Discord account.
+### Shared variables
 
-A guest keeps the same pony for the whole stream, including across page refreshes and reconnects, and gets a new one when the next stream starts. Guests who like theirs can click the pin next to their name in the viewer list to keep it for future streams, and click it again to get a new one next time. Guests can get a different picture of their pony with the 🎲 button next to their name, once every 30 seconds; the streamer can do the same for anyone with the 🎲 button in the dock's viewer list (without the wait). Identities are stored in the SQLite database, so they survive restarts.
+These are read by both services:
 
-Each guest also gets an avatar: a solo picture of their namesake, looked up through the [Derpibooru API](https://derpibooru.org/pages/api). Images are hotlinked from Derpibooru's CDN. Nothing is downloaded; only each guest's chosen image URL is saved with their identity.
+| Variable            | Description                                       |
+| ------------------- | -------------------------------------------------- |
+| `STREAMER_PASSWORD` | Required. Password of MediaMTX's `streamer` user (used by OBS and the web app) and of the `/dock` and `/stream` login |
+| `HOOK_SECRET`       | Shared secret the media server's hooks send to the web app (defaults to `NEXTAUTH_SECRET`; must be the same on both services) |
+| `PLAYER_DOMAIN`     | Domain used for the player link in Discord notifications |
 
-Searches use Derpibooru's default filter. To use a different one, set `GUEST_AVATAR_FILTER_ID` to the ID of any [Derpibooru filter](https://derpibooru.org/filters) (the number in the filter's URL).
+## HTTPS
 
-`GUEST_AVATAR_TAGS` narrows avatars down further: a comma-separated list of [Derpibooru tags](https://derpibooru.org/tags) every avatar must also have. Prefix a tag with `-` to exclude it instead. For example:
+The web app handles authentication (Discord OAuth, per-stream viewer password and streamer password) and the WHEP signaling proxy, but not TLS.
 
-```env
-GUEST_AVATAR_TAGS=cute,smiling,-sad
-```
+For a public deployment, put it behind a TLS-enabled reverse proxy such as Caddy, Traefik, or Cloudflare, and set `CLIENT_IP_HEADER` to match it (see [Client IPs](nextjs/README.md#client-ips)).
 
-Tags are combined with the guest's pony and the filter. If a pony has no matching pictures, the guest gets a generic pony picture with the same tags instead. Changing either setting re-picks existing avatars that no longer match.
-
-Guests can also pick one favourite tag of their own with the 🏷 button next to their name, e.g. `cute` or `hat`. It only affects their own pictures, on top of `GUEST_AVATAR_TAGS`, and stays with them across streams, even when they get a new pony. If their pony has no pictures with that tag, it's ignored until they get one that does. Changing it picks a new picture, so it shares the 30-second wait with the 🎲 button.
-
-#### Custom pony names
-
-`GUEST_PONY_NAMES_FILE` replaces the built-in list of names with your own: a text file with one pony per line, optionally followed by `|` and the Derpibooru tag used to find its pictures (by default, the name itself). Empty lines and lines starting with `#` are ignored:
-
-```text
-# Mane six only
-Twilight Sparkle
-Rainbow Dash
-Pinkie Pie
-Rarity
-Applejack
-Fluttershy
-Best Pony | derpy hooves
-```
-
-The `config` folder is already mounted into the container, so the easiest place for it is `config/pony-names.txt` with `GUEST_PONY_NAMES_FILE=/data/pony-names.txt`. The file is read on startup, so restart the container after editing it. Changing the list gives guests new ponies (kept ones too) and new pictures to match. If the file can't be read or has no names, the built-in list is used and an error is logged.
-
-### `DISCORD_WEBHOOK_URLS`
-
-By default, every path notifies the same `DISCORD_WEBHOOK_URL`. To send some paths to a different Discord channel, list `path:url` pairs, separated by commas:
-
-```env
-DISCORD_WEBHOOK_URLS=desktop:https://discord.com/api/webhooks/...,gaming:https://discord.com/api/webhooks/...
-```
-
-A path not listed here falls back to `DISCORD_WEBHOOK_URL`. This is resolved by the Next.js app (`lib/discordWebhook.ts`) at runtime, based on the path name reported by the stream hooks.
-
-### `WEBRTC_ADDITIONAL_HOSTS`
-
-This is used by MediaMTX when advertising ICE candidates during the WebRTC handshake.
-
-In a typical setup, provide both the server's LAN IP and the public IP that viewers can reach:
-
-```env
-WEBRTC_ADDITIONAL_HOSTS=192.168.1.100,203.0.113.10
-```
-
-The LAN address is useful for clients on the same network, while the public address is used by clients connecting from outside.
-
-A domain can also be used:
-
-```env
-WEBRTC_ADDITIONAL_HOSTS=192.168.1.100,stream.example.com
-```
-
-This requires the domain to resolve directly to the server and UDP port `8189` to be reachable from the internet.
-
-If the domain is behind Cloudflare proxy, regular HTTP proxying does not handle the WebRTC UDP traffic on port `8189`. In that case, either disable the Cloudflare proxy for the WebRTC hostname and forward UDP `8189` to the server, or use a Cloudflare service/plan that supports the required UDP proxying.
-
-The web interface/player itself can still be served through the normal Cloudflare HTTP/HTTPS proxy. Only the WebRTC media connection needs direct UDP connectivity.
-
-### Trusted proxies
-
-`WEBRTC_TRUSTED_PROXIES` and `API_TRUSTED_PROXIES` are MediaMTX's own settings, not the Next.js app's. They list the addresses MediaMTX lets set `X-Forwarded-For` on its WebRTC (`8889`) and control API (`9997`) ports. MediaMTX only uses that header to work out the client's IP for its logs and for IP-restricted users, and this stack has no IP-restricted users.
-
-Next.js doesn't send `X-Forwarded-For` to MediaMTX, so these settings don't change how the app behaves. Next.js works out viewer IPs itself, see [Client IPs](#client-ips).
-
-The default, `0.0.0.0/0,::/0`, trusts everyone. That's harmless for the API, which isn't published outside the Docker network. Port `8889` is published for OBS, though, so anyone reaching it can fake their IP in MediaMTX's logs. Since nothing in the stack needs to set the header, the safest value is localhost only:
-
-```env
-WEBRTC_TRUSTED_PROXIES=127.0.0.1/32
-API_TRUSTED_PROXIES=127.0.0.1/32
-```
-
-Don't use the Docker network's subnet instead: Docker's port proxy can make outside traffic look like it comes from the network's gateway, which is inside that subnet.
-
-### Client IPs
-
-Guests (viewer password) can only be told apart by IP, so approvals, kicks and denials for them depend on Next.js knowing each viewer's real IP. It takes it from the header named by `CLIENT_IP_HEADER`, which your reverse proxy must set:
-
-* `x-forwarded-for` (default): the **last** entry is used, the one added by the proxy right in front of Next.js. Works with a single proxy such as NGINX, Caddy, Traefik, Cloudflare or a Cloudflare Tunnel.
-* With several proxies, e.g. Cloudflare in front of NGINX, the last entry is the outer proxy's address. Use a header the outer proxy sets instead, such as `cf-connecting-ip`, and make sure Next.js is only reachable through it, or clients can send that header themselves.
-
-Without a reverse proxy, clients can pick their own IP, so don't expose Next.js directly.
-
-## Ports
-
-|   Port | Protocol | Description                                  |
-| -----: | :------: | --------------------------------------------- |
-| `8889` |    TCP   | WebRTC signaling - OBS's WHIP publish, MediaMTX's own WHEP playback |
-| `8189` |    UDP   | WebRTC media (RTP), direct browser ↔ MediaMTX |
-| `8080` |    TCP   | Next.js frontend (player, login, WHEP signaling proxy) |
-
-The Next.js port can be changed with `NEXTJS_PORT`.
-
-MediaMTX's WebRTC signaling port `8889` (used for both OBS's WHIP ingest and the player's WHEP playback) is exposed to the host so OBS (running on the streamer's own machine, outside this stack's Docker network) can reach MediaMTX directly for WHIP publishing - see [Publishing with OBS Studio](#publishing-with-obs-studio) below. Browsers reach it indirectly instead: the Next.js frontend proxies the WHEP SDP signaling request (tiny, low-frequency) to `mtxcord-media:8889` after checking the viewer's session, while the actual RTP media always flows directly between the browser and MediaMTX over UDP `8189`, so no extra latency is added to the stream itself. The upstream hostname/port used by the proxy can be changed with `MEDIAMTX_HOST`/`MEDIAMTX_PORT` (defaults to `mtxcord-media:8889`).
-
-## MediaMTX
-
-The default stream path is:
-
-```text
-default
-```
-
-The `streamer` user can publish to this path.
-
-### Publishing with OBS Studio
-
-OBS Studio (≥ 30) can publish directly to MediaMTX using the built-in WHIP output. Open **Settings > Stream** and set:
-
-1. **Service**: `WHIP`
-2. **Server**: `http://<server-address>:8889/<path>/whip` (e.g. `http://localhost:8889/default/whip` if OBS runs on the same machine as Docker). Note this uses MediaMTX's port `8889` directly, not the Next.js port `8080` - WHIP is currently published straight to MediaMTX rather than through the Next.js proxy.
-3. **Bearer Token**: `streamer:<STREAMER_PASSWORD>` - OBS only exposes a single "Bearer Token" field, so MediaMTX's username/password pair must be concatenated with a colon (`user:pass`) and passed there; MediaMTX accepts this as an equivalent of HTTP Basic auth. For example, with `STREAMER_PASSWORD=change-me`, the Bearer Token is `streamer:change-me`.
-
-Replace `<server-address>` with the address the server is reachable at (e.g. `localhost` if OBS runs on the same machine as Docker, the LAN IP, or a public domain), and `default` with the path name you want to publish to (see [Dynamic Path Configuration](#dynamic-path-configuration)).
-
-If OBS reports "Could not access the specified channel or stream key" (or similar generic WHIP failures), it usually means either:
-* Port `8889` isn't reachable from the machine running OBS (check firewalls/port forwarding if OBS is remote), or
-* The Bearer Token doesn't match `streamer:<STREAMER_PASSWORD>` exactly (it's case-sensitive, and there is no space around the colon).
-
-### Dynamic Path Configuration
-
-You can configure multiple paths by creating a `paths.yml` file in the `mediamtx/` folder. Copy the example:
-
-```bash
-cp mediamtx/paths.yml.example mediamtx/paths.yml
-```
-
-Edit `mediamtx/paths.yml` to define your paths:
-
-```yaml
-paths:
-  - name: desktop
-
-  - name: gaming
-
-  - name: music
-
-  - name: browser
-```
-
-Each path can have:
-- **name**: The path name (e.g., `desktop`, `gaming`, `music`)
-- **hook_online**: Optional custom online hook script path
-- **hook_offline**: Optional custom offline hook script path
-- **hook_online_restart**: Optional boolean for hook restart behavior
-- **hook_viewer**: Optional custom viewer hook script path
-
-Per-path Discord webhooks are configured separately via the `DISCORD_WEBHOOK_URLS` environment variable (see [Configuration](#configuration)), not in `paths.yml`.
-
-If no `paths.yml` is mounted, or the mounted file is empty/invalid, `entrypoint.sh` automatically falls back to a built-in default that only defines the single `default` path - the stack still starts instead of crashing.
-
-Because path names are mapped to MediaMTX's `MTX_PATHS_<NAME>_*` environment variables (see [MediaMTX configuration](#mediamtx) below), use single-word, alphanumeric path names (e.g. `desktop`, `gaming`). Names containing `-` or `_` are ambiguous for MediaMTX's environment variable parser and are not supported.
-
-`streamer` is MediaMTX's only user: nothing can be read or published without its password, so viewers can only watch through Next.js, which checks their access. It can only publish to paths that are explicitly listed in `paths.yml` - `entrypoint.sh` grants publish permissions and hook overrides per path, one by one. A path not declared in `paths.yml` can't be published to, so both OBS and the `/stream` browser-capture panel (see [Browser Streaming Panel](#browser-streaming-panel)) can only publish to a path that's already configured there.
-
-MediaMTX configuration:
-
-```text
-mediamtx/mediamtx.yml
-```
-
-Only WebRTC is enabled (WHIP for publishing, WHEP for playback); MediaMTX's RTSP, RTMP, HLS, SRT and MoQ servers are turned off in `mediamtx.yml`.
-
-MediaMTX natively supports configuration through [environment variables](https://mediamtx.org/docs/features/configuration) in the format `MTX_PARAMNAME`. Instead of rendering a full configuration file, `entrypoint.sh` exports the required `MTX_*` variables (derived from the environment and `paths.yml`, if present) and lets MediaMTX apply them on top of `mediamtx.yml` at startup.
-
-### UDP Buffer Tuning (WebRTC packet loss)
-
-MediaMTX's docs note that a too-small UDP receive buffer can cause dropped packets for RTP/WebRTC traffic, especially under load. This stack helps with one half of that automatically, but the other half needs a manual step on the Docker host:
-
-- `entrypoint.sh` exports `MTX_UDPREADBUFFERSIZE` (MediaMTX's own buffer size, in bytes), controlled by the `UDP_READ_BUFFER_SIZE` environment variable (default `1000000`, i.e. MediaMTX's recommended value).
-- For `MTX_UDPREADBUFFERSIZE` to actually take effect, the host's kernel-wide `net.core.rmem_max` sysctl - a separate, unrelated setting with its own default (`100000000`) - must also be raised at least as high. This is a host-wide (non-namespaced) setting, so it can't be set from inside the container - run this on the Docker host:
-
-```bash
-sudo sysctl -w net.core.rmem_max=100000000
-```
-
-To persist this across reboots, add `net.core.rmem_max=100000000` to `/etc/sysctl.conf` (or a file under `/etc/sysctl.d/`).
-
-## Hooks
-
-Stream hooks are located in:
-
-```text
-mediamtx/hooks/
-```
-
-Default configuration:
-
-```env
-HOOK_ONLINE=/hooks/stream-online.sh
-HOOK_ONLINE_RESTART=false
-HOOK_OFFLINE=/hooks/stream-offline.sh
-HOOK_VIEWER=/hooks/stream-viewer.sh
-```
-
-MediaMTX runs the online hook when the stream starts and the offline hook when it stops. It runs the viewer hook (with `read` or `unread`) whenever someone starts or stops watching, so the dock's viewer list updates at once. All hooks call the Next.js app's `/api/streams/hook` endpoint at `NEXTJS_URL` (default `http://mtxcord-web:3000`, the compose service name, so changing `container_name` doesn't break it; set it if you rename the service or run Next.js elsewhere). They authenticate with `HOOK_SECRET`, which must be the same on both services. The endpoint - besides tracking which streams are live, which also clears a path's approvals whenever its stream starts or stops - owns the Discord webhook message for that path (`lib/discordWebhook.ts`): it posts one message when the stream first goes online, then edits that same message in place on every subsequent online/offline transition instead of posting a new one each time. The message id is persisted in the SQLite database, so edits keep working across restarts, and if the stored message was deleted manually (or the webhook URL changed), a fresh message is posted and tracked instead.
-
-The player URL posted to Discord never contains credentials - viewers sign in on the Next.js login page (see [Viewer access](#viewer-access)).
-
-The Next.js app resolves the Discord webhook to use for the current path from the `DISCORD_WEBHOOK_URLS`/`DISCORD_WEBHOOK_URL` environment variables (see [Configuration](#configuration)), and builds the player link from `PLAYER_DOMAIN`.
-
-## Viewer access
-
-Viewers sign in with Discord or with the stream's viewer password; the streamer signs in with `STREAMER_PASSWORD` on `/dock`.
-
-Viewer passwords are stored per path in the SQLite database. There's none until you press the rotate button next to "Current Viewer Password" in the dock, which generates a new random one (and replaces the old one every time after). A path without a password of its own uses the `default` path's password. Rotating a password signs out every guest using it and drops their connection; Discord viewers aren't affected.
-
-Each stream is either:
-
-* **Private** (the default): a signed-in viewer waits on a "waiting for approval" screen until you approve or deny them in the dock. Discord viewers are approved by account, guests by IP (see [Client IPs](#client-ips)). Approvals last until the stream stops or restarts.
-* **Public**: anyone signed in can watch right away. Discord viewers get a pony name too, so everyone is anonymous to each other.
-
-Kicked or denied viewers are kept out for a while, longer with each repeat (see `DENIAL_TIMEOUTS`), and see a countdown until they can try again. Approving them clears the timeout.
-
-## Streamer HUD / OBS Custom Browser Dock
-
-A private streamer dashboard is available at `/dock` in the Next.js frontend, gated by its own login (`STREAMER_PASSWORD`) - separate from both the Discord login and the per-stream viewer password, so viewers can never reach it.
-
-The Next.js app reads MediaMTX's control API (`mtxcord-media:9997/v3/`) for it and pushes the dock everything it shows (see [Live updates](#live-updates)).
-
-Features:
-* Live viewer count and stream status (Live / Offline)
-* The current viewer password, with buttons to rotate and copy it
-* A public/private switch, and pending requests to approve or deny (see [Viewer access](#viewer-access))
-* Connected viewers with their IP address and stream path, a kick button and a 🎲 button that re-rolls a guest's pony picture
-* Pending requests and current viewers are virtualized, scrollable lists with a search box (matches the viewer's name, Discord account, or IP)
-* Activity log of recent viewer connections and disconnections, opened in a popup from the header's log button
-* Optional audio chime synthesized via Web Audio API on viewer join
-* The header shows the live stream's path. When several paths are live at once (e.g. OBS on `desktop` and the browser panel on `browser`), it becomes a dropdown with each stream's viewer and pending counts, and the password, public/private switch, pending requests, viewers and activity below all follow the picked stream. Join/leave chimes still play for every stream
-* Kicking, approving, denying and switching a stream between public and private take effect at once, both in the dock and for the viewers concerned
-* Switching a stream with viewers to private asks what to do with them: approve them all so they keep watching, make them request access again, or kick them all (each gets the same timeout as a manual kick, see `DENIAL_TIMEOUTS`)
-
-## Live updates
-
-Pages don't poll for changes; the server pushes them over [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events):
-
-* The player and the "waiting for approval" screen share one stream per page (`/api/watch/<path>`). It carries whether the viewer may watch (or is waiting, kicked or denied, with the time left) and whether the stream is online, plus the viewer list and reactions. A kicked viewer is moved to the removal screen right away, an approved one straight into the stream, and the player connects as soon as the stream goes live.
-* The dock has its own stream (`/api/dock/events`) with everything it shows.
-* A waiting viewer's request lasts as long as their waiting screen is open: closing it takes them off the dock's pending list immediately.
-* Stream state comes from the MediaMTX hooks (see [Hooks](#hooks)). In case one is missed, for example because of a wrong `HOOK_SECRET`, Next.js also checks MediaMTX every 10 seconds while anyone is watching.
-
-Proxies in front of the Next.js app must not buffer responses for this to work. Responses carry `X-Accel-Buffering: no` for NGINX; other proxies (and Cloudflare) stream them as-is.
-
-All of this state lives in the Next.js server's memory and SQLite database, so run a single Next.js container.
-
-### Adding to OBS Studio
-1. In OBS Studio, open **Docks** > **Custom Browser Docks...**
-2. Set **Dock Name** to `Stream HUD` (or any name you prefer).
-3. Set **URL** to `https://stream.example.com/dock` (or `http://localhost:8080/dock`).
-4. Enter your `STREAMER_PASSWORD` on the login page that appears.
-5. Dock the window anywhere in your OBS workspace.
-
-## Browser Streaming Panel
-
-For streaming without OBS (e.g. to avoid being locked into a single resolution/framerate for everything you capture), a self-contained streaming panel is available at `/stream`, gated the same way as `/dock` (`STREAMER_PASSWORD`, or bypassed entirely when `DISABLE_DOCK_AUTH=true`).
-
-It uses the browser's native [`getDisplayMedia`](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia) screen/window/tab picker to capture a source, then publishes it directly to MediaMTX over WebRTC using [WHIP](https://mediamtx.org/docs/features/webrtc), proxied through `/api/whip/<path>` the same way `/api/whep` proxies playback. The MediaMTX path it publishes to must be one already declared in `paths.yml` (see [Dynamic Path Configuration](#dynamic-path-configuration)); the built-in `paths.yml` ships with a `browser` path for this purpose, independent from whatever OBS publishes to `default`/`desktop`.
-
-Available settings, adjustable per-stream and optionally saved for next time:
-* **Path** - the MediaMTX path name to publish to, picked from a dropdown listing paths declared in `paths.yml` (or currently active); custom/undeclared path names cannot be selected or published to, since MediaMTX only grants publish/read permissions to paths configured there; viewers watch it at that same path
-* **Preferred source** - desktop, application window, or browser tab (only pre-selects the browser's share picker; the final choice is still made there); when "Application window" + audio is picked, a Chrome-only `windowAudio: "window"` hint asks the browser to scope captured audio to that window alone instead of the whole desktop - support varies by browser/OS, so a warning is shown and "Entire desktop"/"Browser tab" remain the more reliable fallbacks
-* **Fixed resolution** - optionally pin capture to a specific width/height instead of following the source's native resolution
-* **Framerate**
-* **Video bitrate and codec** (VP8/VP9/H.264/AV1, subject to browser support; defaults to H.264) - if H.264 ends up being negotiated (explicitly chosen, or picked automatically), the panel always prefers its Baseline profile, which cannot use B-frames, reducing encode/decode latency. There is no web API to request a specific hardware encoder (e.g. NVENC) directly - the browser always decides - but Chrome only hardware-accelerates H.264 broadly (VP8 has no hardware encoder path at all, VP9/AV1 support is limited and GPU/OS-dependent), so H.264 is the closest equivalent to OBS+NVENC at high bitrates; make sure hardware acceleration is enabled in your browser's settings too
-* **Content hint** - hints the encoder to favor motion smoothness, per-frame detail, or text sharpness (`motion`/`detail`/`text`), or leave it to the browser's default
-* **Degradation preference** - when bandwidth/CPU can't keep up, whether the encoder should drop resolution to keep the framerate smooth (`maintain-framerate`, the default - usually fixes stutter), drop framerate to keep resolution sharp (`maintain-resolution`), or balance both
-* **Audio** - whether to include system/tab audio, and its target bitrate; if the browser/OS can't provide audio for the chosen source, the stream automatically falls back to video-only instead of failing to start. If audio capture fails with a "Could not start audio source" error, a virtual surround sound effect on your headphones/audio device is a common cause - try disabling it.
-
-Saved settings are stored in a small SQLite database inside the Next.js container, always at the fixed path `/data/sqlite/mtxcord.db`; mount `/data` as a volume (already done in the provided `docker-compose.yaml`, mapped to `./config`, so the database ends up in `config/sqlite`) to persist them across restarts. A database from before the rename (`discordmtx.db`) is deleted on startup and not migrated; to keep its data, stop the stack and rename it (and any `-wal`/`-shm` files next to it) to `config/sqlite/mtxcord.db` before starting the new version.
-
-Because everything runs in the browser, resolution and framerate are no longer forced to a single global setting like they are in OBS - the browser panel captures at whatever the source natively provides (or a fixed size you choose), independently from anything else running on the machine.
-
-Under the hood, the panel also applies a few other WebRTC tuning options: `bundlePolicy: "max-bundle"` and a small ICE candidate pool for a faster initial connection, `maxFramerate`/`priority`/`networkPriority` on the video encoding, and disabled Opus DTX with in-band FEC enabled on the audio track.
+Keep in mind that HTTPS proxying and WebRTC are separate connections. Cloudflare can proxy the HTTP/HTTPS side normally, while WebRTC still needs its UDP path to be reachable (see [`WEBRTC_ADDITIONAL_HOSTS`](mediamtx/README.md#webrtc_additional_hosts)).
 
 ## Development
 
@@ -426,30 +113,16 @@ cd dev
 docker compose up -d --build
 ```
 
-It reads the same environment variables described in [Configuration](#configuration) via a `.env` file placed in the `dev/` directory.
-
-## HTTPS
-
-The Next.js frontend handles authentication (Discord OAuth, per-stream viewer password and streamer password) and the WHEP signaling proxy, but not TLS.
-
-For a public deployment, put it behind a TLS-enabled reverse proxy such as Caddy, Traefik, or Cloudflare.
-
-Keep in mind that HTTPS proxying and WebRTC are separate connections. Cloudflare can proxy the HTTP/HTTPS side normally, while WebRTC still needs its UDP path to be reachable.
+It reads the same environment variables via a `.env` file placed in the `dev/` directory.
 
 ## Project structure
 
 ```text
 .
-├── .github/
-├── dev/
-├── mediamtx/
-│   ├── hooks/
-│   ├── Dockerfile
-│   ├── entrypoint.sh
-│   ├── mediamtx.yml
-│   ├── paths.yml
-│   └── paths.yml.example
-├── nextjs/
+├── .github/              # CI: builds and pushes both images
+├── dev/                  # compose file that builds from source
+├── mediamtx/             # mtxcord-media: MediaMTX config, entrypoint and hooks
+├── nextjs/               # mtxcord-web: the Next.js app
 └── docker-compose.yaml
 ```
 
