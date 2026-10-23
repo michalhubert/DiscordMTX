@@ -25,8 +25,6 @@ HOOK_ONLINE_RESTART="${HOOK_ONLINE_RESTART:-false}"
 HOOK_OFFLINE="${HOOK_OFFLINE:-/hooks/stream-offline.sh}"
 # Empty turns it off.
 HOOK_VIEWER="${HOOK_VIEWER-/hooks/stream-viewer.sh}"
-export DISCORD_WEBHOOK_URL="${DISCORD_WEBHOOK_URL:-}"
-export DISCORD_WEBHOOK_URLS="${DISCORD_WEBHOOK_URLS:-}"
 
 # The "streamer" password is used for:
 #  - MediaMTX's only user, "streamer": OBS publishing, and Next.js (playback

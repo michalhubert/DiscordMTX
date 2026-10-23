@@ -5,8 +5,8 @@ STREAM_PATH="${MTX_PATH:-desktop}"
 DOMAIN="${PLAYER_DOMAIN:-localhost}"
 URL="https://${DOMAIN}/${STREAM_PATH}/"
 
-# Notify Next.js app that the stream is online so it can initialize access
-# sessions cleanly and post/update the Discord "stream online" webhook
+# Notify Next.js app that the stream is online so it can mark it live (clearing
+# the path's approvals) and post/update the Discord "stream online" webhook
 # message (Next.js owns the Discord webhook state, see lib/discordWebhook.ts).
 curl -s -X POST "${NEXTJS_URL:-http://mtxcord-web:3000}/api/streams/hook" \
   -H "Content-Type: application/json" \
