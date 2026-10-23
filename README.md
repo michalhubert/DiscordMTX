@@ -15,16 +15,20 @@ FFmpeg transcoding may be added in the future.
 * WebRTC (WHIP ingest / WHEP playback) for low-latency streaming
 * Next.js frontend with a built-in WebRTC player and login gate
 * "Sign in with Discord" (real Discord OAuth2) for viewers
-* Per-stream, auto-generated viewer password for non-Discord viewers
+* Per-stream viewer password for guests (non-Discord viewers), generated and rotated from the dock
+* Private streams by default: you approve each viewer from the dock, or switch a stream to public so anyone signed in can watch (see [Viewer access](#viewer-access))
+* Kick or deny viewers, with a timeout that grows on each repeat
+* Anonymous pony names and Derpibooru avatars for guests (see [Guest names and avatars](#guest-names-and-avatars))
 * Discord webhook notifications that edit a single message in place for online/offline events, instead of spamming a new message every stream
 * Private streamer HUD / OBS Custom Browser Dock (`/dock`), gated by its own password
 * In-browser desktop/app streaming panel (`/stream`) using WHIP + `getDisplayMedia`, no OBS required
 * Per-stream bitrate/codec/resolution/audio settings, saved to a small SQLite database
 * Live emoji reactions that float over the player for every viewer (buttons or keys `1`-`8`)
-* Toggleable "who's watching" overlay (button or `V`), with Discord avatars
+* Toggleable "who's watching" overlay (button or `V`), with Discord avatars or guest ponies
+* Keyboard shortcuts on the player: `M` mute, `F` fullscreen; a viewer who refreshes starts muted and is unmuted on their first click or key press
+* Accent colour picker, either custom or taken from the viewer's avatar, with a separate one for the dock and `/stream`
 * Connection warnings for viewers (packet loss, stalls, high latency, freezes, dropped frames, going offline) plus a signal indicator with live stats
 * Everything updates live: kicks, approvals, the stream going on/offline, viewers joining and leaving reach every open page within milliseconds (see [Live updates](#live-updates))
-* Automatic credential generation
 * Docker Compose deployment
 
 ## Requirements
@@ -64,7 +68,7 @@ NEXTAUTH_URL=https://stream.example.com
 #HOOK_SECRET=another-random-secret
 
 # Discord OAuth app (https://discord.com/developers/applications), lets viewers
-# sign in with their Discord account instead of the generated stream password
+# sign in with their Discord account instead of the viewer password
 #DISCORD_CLIENT_ID=
 #DISCORD_CLIENT_SECRET=
 #NEXT_PUBLIC_DISCORD_ENABLED=false
@@ -81,7 +85,7 @@ Start the stack:
 docker compose up -d
 ```
 
-A viewer password is generated automatically each time the stream starts, and is validated by the Next.js login page. No manual `htpasswd` setup is required. Viewers can instead sign in with their Discord account if `DISCORD_CLIENT_ID`/`DISCORD_CLIENT_SECRET` are configured.
+Viewers sign in on the Next.js login page, either with Discord (if `DISCORD_CLIENT_ID`/`DISCORD_CLIENT_SECRET` are configured) or with the stream's viewer password. There's no viewer password until you generate one in the dock (see [Viewer access](#viewer-access)).
 
 Check the logs:
 
@@ -334,11 +338,24 @@ HOOK_OFFLINE=/hooks/stream-offline.sh
 HOOK_VIEWER=/hooks/stream-viewer.sh
 ```
 
-MediaMTX runs the online hook when the stream starts and the offline hook when it stops. It runs the viewer hook (with `read` or `unread`) whenever someone starts or stops watching, so the dock's viewer list updates at once. All hooks call the Next.js app's `/api/streams/hook` endpoint at `NEXTJS_URL` (default `http://mtxcord-web:3000`, the compose service name, so changing `container_name` doesn't break it; set it if you rename the service or run Next.js elsewhere). They authenticate with `HOOK_SECRET`, which must be the same on both services. The endpoint - besides initializing/clearing access sessions - owns the Discord webhook message for that path (`lib/discordWebhook.ts`): it posts one message when the stream first goes online, then edits that same message in place on every subsequent online/offline transition instead of posting a new one each time. The message id is persisted in the SQLite database, so edits keep working across restarts, and if the stored message was deleted manually (or the webhook URL changed), a fresh message is posted and tracked instead.
+MediaMTX runs the online hook when the stream starts and the offline hook when it stops. It runs the viewer hook (with `read` or `unread`) whenever someone starts or stops watching, so the dock's viewer list updates at once. All hooks call the Next.js app's `/api/streams/hook` endpoint at `NEXTJS_URL` (default `http://mtxcord-web:3000`, the compose service name, so changing `container_name` doesn't break it; set it if you rename the service or run Next.js elsewhere). They authenticate with `HOOK_SECRET`, which must be the same on both services. The endpoint - besides tracking which streams are live, which also clears a path's approvals whenever its stream starts or stops - owns the Discord webhook message for that path (`lib/discordWebhook.ts`): it posts one message when the stream first goes online, then edits that same message in place on every subsequent online/offline transition instead of posting a new one each time. The message id is persisted in the SQLite database, so edits keep working across restarts, and if the stored message was deleted manually (or the webhook URL changed), a fresh message is posted and tracked instead.
 
-Viewer passwords are stored per-path in the SQLite database and can be rotated via the streamer dock (/dock). When a password is rotated, all existing viewer sessions are invalidated and viewers must re-login with the new password. The player URL posted to Discord never contains credentials - viewers enter the password on the Next.js login page.
+The player URL posted to Discord never contains credentials - viewers sign in on the Next.js login page (see [Viewer access](#viewer-access)).
 
 The Next.js app resolves the Discord webhook to use for the current path from the `DISCORD_WEBHOOK_URLS`/`DISCORD_WEBHOOK_URL` environment variables (see [Configuration](#configuration)), and builds the player link from `PLAYER_DOMAIN`.
+
+## Viewer access
+
+Viewers sign in with Discord or with the stream's viewer password; the streamer signs in with `STREAMER_PASSWORD` on `/dock`.
+
+Viewer passwords are stored per path in the SQLite database. There's none until you press the rotate button next to "Current Viewer Password" in the dock, which generates a new random one (and replaces the old one every time after). A path without a password of its own uses the `default` path's password. Rotating a password signs out every guest using it and drops their connection; Discord viewers aren't affected.
+
+Each stream is either:
+
+* **Private** (the default): a signed-in viewer waits on a "waiting for approval" screen until you approve or deny them in the dock. Discord viewers are approved by account, guests by IP (see [Client IPs](#client-ips)). Approvals last until the stream stops or restarts.
+* **Public**: anyone signed in can watch right away. Discord viewers get a pony name too, so everyone is anonymous to each other.
+
+Kicked or denied viewers are kept out for a while, longer with each repeat (see `DENIAL_TIMEOUTS`), and see a countdown until they can try again. Approving them clears the timeout.
 
 ## Streamer HUD / OBS Custom Browser Dock
 
@@ -348,7 +365,9 @@ The Next.js app reads MediaMTX's control API (`mtxcord-media:9997/v3/`) for it a
 
 Features:
 * Live viewer count and stream status (Live / Offline)
-* Connected viewers with their IP address and stream path
+* The current viewer password, with buttons to rotate and copy it
+* A public/private switch, and pending requests to approve or deny (see [Viewer access](#viewer-access))
+* Connected viewers with their IP address and stream path, a kick button and a 🎲 button that re-rolls a guest's pony picture
 * Pending requests and current viewers are virtualized, scrollable lists with a search box (matches the viewer's name, Discord account, or IP)
 * Activity log of recent viewer connections and disconnections, opened in a popup from the header's log button
 * Optional audio chime synthesized via Web Audio API on viewer join
@@ -392,17 +411,11 @@ Available settings, adjustable per-stream and optionally saved for next time:
 * **Degradation preference** - when bandwidth/CPU can't keep up, whether the encoder should drop resolution to keep the framerate smooth (`maintain-framerate`, the default - usually fixes stutter), drop framerate to keep resolution sharp (`maintain-resolution`), or balance both
 * **Audio** - whether to include system/tab audio, and its target bitrate; if the browser/OS can't provide audio for the chosen source, the stream automatically falls back to video-only instead of failing to start. If audio capture fails with a "Could not start audio source" error, a virtual surround sound effect on your headphones/audio device is a common cause - try disabling it.
 
-Saved settings are stored in a small SQLite database inside the Next.js container, always at the fixed path `/data/sqlite/mtxcord.db`; mount `/data` as a volume (already done in the provided `docker-compose.yaml`, mapped to `./config`, so the database ends up in `config/sqlite`) to persist them across restarts. A database left at `config/discordmtx.db` or `config/sqlite/discordmtx.db` by an older (DiscordMTX) version is moved there automatically on startup.
+Saved settings are stored in a small SQLite database inside the Next.js container, always at the fixed path `/data/sqlite/mtxcord.db`; mount `/data` as a volume (already done in the provided `docker-compose.yaml`, mapped to `./config`, so the database ends up in `config/sqlite`) to persist them across restarts. A database from before the rename (`discordmtx.db`) is deleted on startup and not migrated; to keep its data, stop the stack and rename it (and any `-wal`/`-shm` files next to it) to `config/sqlite/mtxcord.db` before starting the new version.
 
 Because everything runs in the browser, resolution and framerate are no longer forced to a single global setting like they are in OBS - the browser panel captures at whatever the source natively provides (or a fixed size you choose), independently from anything else running on the machine.
 
 Under the hood, the panel also applies a few other WebRTC tuning options: `bundlePolicy: "max-bundle"` and a small ICE candidate pool for a faster initial connection, `maxFramerate`/`priority`/`networkPriority` on the video encoding, and disabled Opus DTX with in-band FEC enabled on the audio track.
-
-## Upgrading from DiscordMTX
-
-The project was renamed from DiscordMTX to MTXcord. The images, compose services and containers are now `mtxcord-media` (MediaMTX, was `discordmtx`) and `mtxcord-web` (Next.js, was `discordmtx-nextjs` / `nextjs`); the old images on Docker Hub no longer get updates. To upgrade, take the new `docker-compose.yaml` (or rename the services and images in yours), run `docker compose up -d --remove-orphans`, and update `NEXTJS_URL`/`MEDIAMTX_HOST` if you set them to the old service names.
-
-The SQLite database is moved to `config/sqlite/mtxcord.db` automatically, and viewers keep their saved player and accent settings.
 
 ## Development
 
@@ -417,7 +430,7 @@ It reads the same environment variables described in [Configuration](#configurat
 
 ## HTTPS
 
-The Next.js frontend handles authentication (Discord OAuth + per-stream viewer password) and the WHEP signaling proxy, but not TLS.
+The Next.js frontend handles authentication (Discord OAuth, per-stream viewer password and streamer password) and the WHEP signaling proxy, but not TLS.
 
 For a public deployment, put it behind a TLS-enabled reverse proxy such as Caddy, Traefik, or Cloudflare.
 

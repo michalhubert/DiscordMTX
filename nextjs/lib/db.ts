@@ -1,7 +1,7 @@
 // noinspection SqlNoDataSourceInspection
 
 import Database from 'better-sqlite3'
-import { existsSync, mkdirSync, renameSync } from 'fs'
+import { mkdirSync, rmSync } from 'fs'
 import { dirname } from 'path'
 
 import { DEFAULT_STREAM_SETTINGS, type StreamSettings } from './streamSettings'
@@ -10,27 +10,21 @@ export * from './streamSettings'
 export type PathVisibility = 'public' | 'private'
 
 const DB_PATH = '/data/sqlite/mtxcord.db'
-// Where the database was before the DiscordMTX -> MTXcord rename, and before
-// that when /data/sqlite itself was the volume, i.e. at the root of the
-// mounted folder now that /data is.
-const LEGACY_DB_PATHS = ['/data/sqlite/discordmtx.db', '/data/discordmtx.db']
+// Pre-rename (DiscordMTX) databases; not migrated, only cleaned up.
+const OLD_DB_PATHS = ['/data/sqlite/discordmtx.db', '/data/discordmtx.db']
 
-function moveLegacyDb(): void {
-  if (existsSync(DB_PATH)) return
-  const legacyPath = LEGACY_DB_PATHS.find((path) => existsSync(path))
-  if (!legacyPath) return
-  try {
+function removeOldDbs(): void {
+  for (const path of OLD_DB_PATHS) {
     for (const suffix of ['', '-wal', '-shm']) {
-      if (existsSync(legacyPath + suffix)) {
-        renameSync(legacyPath + suffix, DB_PATH + suffix)
+      try {
+        rmSync(path + suffix, { force: true })
+      } catch (err) {
+        console.error(
+          `Failed to remove the old database ${path + suffix}:`,
+          err,
+        )
       }
     }
-    console.log(`Moved the database from ${legacyPath} to ${DB_PATH}`)
-  } catch (err) {
-    console.error(
-      `Failed to move the database from ${legacyPath} to ${DB_PATH}:`,
-      err,
-    )
   }
 }
 
@@ -42,7 +36,7 @@ function getDb(): Database.Database {
   try {
     mkdirSync(dirname(DB_PATH), { recursive: true })
   } catch {}
-  moveLegacyDb()
+  removeOldDbs()
 
   db = new Database(DB_PATH)
   db.pragma('journal_mode = WAL')

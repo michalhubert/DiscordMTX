@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { adoptLegacyStorageKey } from './legacyStorage'
 
 interface PlayerState {
   volume: number
@@ -29,10 +28,7 @@ export const usePlayerStore = create<PlayerState>()(
       toggleShowViewers: () => set((state) => ({ showViewers: !state.showViewers })),
     }),
     {
-      name: adoptLegacyStorageKey(
-        'mtxcord-player-settings',
-        'discordmtx-player-settings',
-      ),
+      name: 'mtxcord-player-settings',
     },
   ),
 )
