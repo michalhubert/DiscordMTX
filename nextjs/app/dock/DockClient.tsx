@@ -515,9 +515,12 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
               <Stack direction="row" spacing={1} sx={{ alignItems: 'center', minWidth: 0 }}>
                 <SmallAvatar image={req.image} fallback={req.name || req.clientIp || 'Guest'} />
                 <Box sx={{ minWidth: 0 }}>
-                  <Typography noWrap sx={{ fontSize: 12, fontWeight: 600, color: 'primary.light' }}>
-                    {req.name ?? req.clientIp ?? 'Guest'}
-                  </Typography>
+                  <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', minWidth: 0 }}>
+                    <Typography noWrap sx={{ fontSize: 12, fontWeight: 600, color: 'primary.light' }}>
+                      {req.name ?? req.clientIp ?? 'Guest'}
+                    </Typography>
+                    {req.role === 'discord' && <DiscordIcon />}
+                  </Stack>
                   <Typography sx={{ fontSize: 10, color: 'text.secondary' }}>
                     {req.name && req.clientIp && <>{req.clientIp} · </>}
                     wants to join <strong>/{req.path}</strong>
@@ -578,9 +581,12 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
                 <SmallAvatar image={null} fallback={r.name || 'G'} />
               )}
               <Box sx={{ minWidth: 0 }}>
-                <Typography noWrap sx={{ fontSize: 12, fontWeight: 600, color: 'primary.light' }}>
-                  {viewerLabel(r)}
-                </Typography>
+                <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', minWidth: 0 }}>
+                  <Typography noWrap sx={{ fontSize: 12, fontWeight: 600, color: 'primary.light' }}>
+                    {viewerLabel(r)}
+                  </Typography>
+                  {r.role === 'discord' && !r.hasPony && <DiscordIcon />}
+                </Stack>
                 {r.discordName && (
                   <Stack
                     direction="row"
@@ -595,7 +601,8 @@ export default function DockClient({ embedded = false }: { embedded?: boolean })
                         sx={{ width: 12, height: 12 }}
                       />
                     )}
-                    <span>Discord: {r.discordName}</span>
+                    <span>{r.discordName}</span>
+                    <DiscordIcon size={10} />
                   </Stack>
                 )}
                 <Typography sx={{ fontSize: 10, color: 'text.secondary' }}>
@@ -1058,5 +1065,24 @@ function SmallAvatar({
     >
       {fallback.charAt(0).toUpperCase()}
     </Avatar>
+  )
+}
+
+function DiscordIcon({ size = 12 }: { size?: number }) {
+  return (
+    // A mask instead of <img>, so the logo takes the accent colour.
+    <Box
+      component="span"
+      role="img"
+      aria-label="Discord"
+      title="Discord"
+      sx={{
+        width: size,
+        height: size,
+        flexShrink: 0,
+        bgcolor: 'primary.main',
+        mask: 'url(/discord.svg) center / contain no-repeat',
+      }}
+    />
   )
 }
